@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Profile as ImportedProfile } from '@/hooks/useAuth';
+import { useNavigate } from 'react-router-dom';
 
 export interface Profile {
   id: string;
@@ -28,6 +29,10 @@ export const useOnlinePresence = (currentProfile: ImportedProfile | null) => {
   const channelRef = useRef<any>(null);
   const presenceIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const navigate = useNavigate();
+  const sentInvitationsChannelRef = useRef<any>(null);
+  const receivedInvitationsChannelRef = useRef<any>(null);
+  const navigationLockRef = useRef<boolean>(false);
 
   const updatePresence = useCallback(async (isOnline: boolean) => {
     if (!currentProfile) return;
@@ -221,6 +226,82 @@ export const useOnlinePresence = (currentProfile: ImportedProfile | null) => {
       cleanupChannel();
     };
   }, [currentProfile, updatePresence, fetchOnlineUsers, cleanupChannel, isSubscribed]);
+
+  useEffect(() => {
+    if (!currentProfile) return;
+
+    // ניקוי ערוצים קודמים
+    if (sentInvitationsChannelRef.current) {
+      try {
+        supabase.removeChannel(sentInvitationsChannelRef.current);
+        sentInvitationsChannelRef.current = null;
+      } catch (e) { console.error('Error cleaning sentInvitationsChannel:', e); }
+    }
+    if (receivedInvitationsChannelRef.current) {
+      try {
+        supabase.removeChannel(receivedInvitationsChannelRef.current);
+        receivedInvitationsChannelRef.current = null;
+      } catch (e) { console.error('Error cleaning receivedInvitationsChannel:', e); }
+    }
+    navigationLockRef.current = false;
+
+    // האזנה להזמנות שנשלחו על ידי המשתמש
+    sentInvitationsChannelRef.current = supabase
+      .channel('sent-invitations')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'competition_invitations',
+        filter: `from_profile_id=eq.${currentProfile.id}`
+      }, (payload: any) => {
+        console.log('[SYNC] Update on sent invitation:', payload);
+        if (payload?.new?.status === 'accepted' && payload?.new?.competition_id && !navigationLockRef.current) {
+          navigationLockRef.current = true;
+          console.log('[SYNC] Navigating (sent) to game:', payload.new.competition_id);
+          navigate(`/online-game/${payload.new.competition_id}`);
+        }
+      })
+      .subscribe((status: any) => {
+        console.log('[SYNC] sent-invitations channel status:', status);
+      });
+
+    // האזנה להזמנות שהתקבלו על ידי המשתמש
+    receivedInvitationsChannelRef.current = supabase
+      .channel('received-invitations')
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'competition_invitations',
+        filter: `to_profile_id=eq.${currentProfile.id}`
+      }, (payload: any) => {
+        console.log('[SYNC] Update on received invitation:', payload);
+        if (payload?.new?.status === 'accepted' && payload?.new?.competition_id && !navigationLockRef.current) {
+          navigationLockRef.current = true;
+          console.log('[SYNC] Navigating (received) to game:', payload.new.competition_id);
+          navigate(`/online-game/${payload.new.competition_id}`);
+        }
+      })
+      .subscribe((status: any) => {
+        console.log('[SYNC] received-invitations channel status:', status);
+      });
+
+    // ניקוי ערוצים ב-unmount
+    return () => {
+      if (sentInvitationsChannelRef.current) {
+        try {
+          supabase.removeChannel(sentInvitationsChannelRef.current);
+          sentInvitationsChannelRef.current = null;
+        } catch (e) { console.error('Error cleaning sentInvitationsChannel:', e); }
+      }
+      if (receivedInvitationsChannelRef.current) {
+        try {
+          supabase.removeChannel(receivedInvitationsChannelRef.current);
+          receivedInvitationsChannelRef.current = null;
+        } catch (e) { console.error('Error cleaning receivedInvitationsChannel:', e); }
+      }
+      navigationLockRef.current = false;
+    };
+  }, [currentProfile, navigate]);
 
   return {
     onlineUsers,
