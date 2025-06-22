@@ -3,16 +3,6 @@ import { supabase } from '@/integrations/supabase/client';
 import { renderAvatarByType, AvatarCharacter } from '@/components/AvatarSelector';
 import { Users, Search, Send } from 'lucide-react';
 
-const getCurrentProfile = () => {
-  // נסה להביא את הפרופיל הנבחר מה-localStorage או context (פשטות)
-  try {
-    const profile = localStorage.getItem('selectedProfile');
-    return profile ? JSON.parse(profile) : null;
-  } catch {
-    return null;
-  }
-};
-
 const OnlineCompetition = () => {
   // לוג בסיסי
   console.log('OnlineCompetition render');
@@ -21,28 +11,78 @@ const OnlineCompetition = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
-  const [sending, setSending] = useState<string | null>(null); // id של משתמש שנשלחת אליו הזמנה
-  const [inviteModal, setInviteModal] = useState(null); // {from_profile, invitation_id, competition_id}
-  const [waitingForAccept, setWaitingForAccept] = useState<string | null>(null); // competition_id
+  const [sending, setSending] = useState<string | null>(null);
+  const [inviteModal, setInviteModal] = useState(null);
   const [infoMsg, setInfoMsg] = useState('');
   const [polling, setPolling] = useState(false);
   const [myInvitations, setMyInvitations] = useState([]);
+  const [currentProfile, setCurrentProfile] = useState(null);
+  const [profileLoading, setProfileLoading] = useState(true);
 
-  const currentProfile = getCurrentProfile();
-
-  // 1. טען רק משתמשים מחוברים (is_online=true)
+  // 1. טען את הפרופיל הנוכחי
   useEffect(() => {
-    const fetchUsers = async () => {
-      setLoading(true);
-      setError(null);
+    const getCurrentProfile = async () => {
+      setProfileLoading(true);
       try {
-        const { data, error } = await supabase.from('profiles').select('*');
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setError('לא נמצא משתמש מחובר');
+          setProfileLoading(false);
+          return;
+        }
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .single();
+        if (profileError || !profile) {
+          setError('לא נמצא פרופיל למשתמש');
+          setProfileLoading(false);
+          return;
+        }
+        setCurrentProfile(profile);
+      } catch (err) {
+        setError('שגיאה בטעינת פרופיל: ' + err.message);
+      } finally {
+        setProfileLoading(false);
+      }
+    };
+    getCurrentProfile();
+  }, []);
+
+  // 2. עדכן user_presence בכניסה/יציאה
+  useEffect(() => {
+    if (!currentProfile) return;
+    const setOnline = async (isOnline: boolean) => {
+      await supabase.from('user_presence').upsert({
+        profile_id: currentProfile.id,
+        is_online: isOnline,
+        last_seen: new Date().toISOString(),
+      });
+    };
+    setOnline(true);
+    window.addEventListener('beforeunload', () => setOnline(false));
+    return () => { setOnline(false); };
+  }, [currentProfile]);
+
+  // 3. טען רק משתמשים מחוברים (is_online=true) עם join ל-profiles
+  useEffect(() => {
+    if (!currentProfile) return;
+    setLoading(true);
+    setError(null);
+    const fetchUsers = async () => {
+      try {
+        const { data, error } = await supabase
+          .from('user_presence')
+          .select('profile_id, is_online, profiles ( id, name, avatar_character )')
+          .eq('is_online', true);
         if (error) setError(error.message);
         else {
-          // טען רק משתמשים שמחוברים (is_online=true)
-          const { data: presence } = await supabase.from('user_presence').select('*').eq('is_online', true);
-          const onlineIds = (presence || []).map(p => p.profile_id);
-          setUsers((data || []).filter(u => onlineIds.includes(u.id) && (!currentProfile || u.id !== currentProfile.id)));
+          // סנן את המשתמש הנוכחי
+          const filtered = (data || [])
+            .filter(u => u.profiles && u.profile_id !== currentProfile.id)
+            .map(u => u.profiles);
+          setUsers(filtered);
         }
       } catch (err) {
         setError(err.message);
@@ -53,7 +93,7 @@ const OnlineCompetition = () => {
     fetchUsers();
   }, [currentProfile]);
 
-  // 2. Polling להזמנות נכנסות/יוצאות
+  // 4. Polling להזמנות נכנסות/יוצאות
   useEffect(() => {
     if (!currentProfile) return;
     setPolling(true);
@@ -65,9 +105,7 @@ const OnlineCompetition = () => {
         .eq('to_profile_id', currentProfile.id)
         .eq('status', 'pending');
       if (incoming && incoming.length > 0) {
-        // הבא רק את ההזמנה האחרונה
         const invitation = incoming[0];
-        // הבא פרטי שולח
         const { data: fromProfile } = await supabase.from('profiles').select('*').eq('id', invitation.from_profile_id).single();
         setInviteModal({
           from_profile: fromProfile,
@@ -104,7 +142,7 @@ const OnlineCompetition = () => {
     };
   }, [currentProfile]);
 
-  // 3. שליחת הזמנה אמיתית
+  // 5. שליחת הזמנה אמיתית
   const handleSendInvitation = async (toProfileId: string) => {
     console.log('Sending invitation to:', toProfileId);
     if (!currentProfile) {
@@ -114,7 +152,6 @@ const OnlineCompetition = () => {
     setSending(toProfileId);
     setInfoMsg('שולח הזמנה...');
     try {
-      // צור competition חדש
       const { data: comp, error: compErr } = await supabase
         .from('online_competitions')
         .insert({
@@ -129,7 +166,6 @@ const OnlineCompetition = () => {
         .single();
       console.log('Competition created:', comp, compErr);
       if (compErr || !comp) throw new Error(compErr?.message || 'שגיאה ביצירת משחק');
-      // שלח הזמנה
       const { data: invitation, error: invErr } = await supabase
         .from('competition_invitations')
         .insert({
@@ -156,7 +192,7 @@ const OnlineCompetition = () => {
     }
   };
 
-  // 4. אישור/דחיית הזמנה
+  // 6. אישור/דחיית הזמנה
   const handleAccept = async () => {
     if (!inviteModal) return;
     setInfoMsg('מאשר הזמנה...');
@@ -191,6 +227,13 @@ const OnlineCompetition = () => {
     }
   };
 
+  if (profileLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-kidGradient font-varela">
+        <div className="text-xl text-blue-800 animate-pulse">טוען פרופיל...</div>
+      </div>
+    );
+  }
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-kidGradient font-varela">
