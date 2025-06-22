@@ -106,7 +106,11 @@ const OnlineCompetition = () => {
 
   // 3. שליחת הזמנה אמיתית
   const handleSendInvitation = async (toProfileId: string) => {
-    if (!currentProfile) return;
+    console.log('Sending invitation to:', toProfileId);
+    if (!currentProfile) {
+      alert('שגיאה: לא נמצא משתמש נוכחי');
+      return;
+    }
     setSending(toProfileId);
     setInfoMsg('שולח הזמנה...');
     try {
@@ -123,9 +127,10 @@ const OnlineCompetition = () => {
         })
         .select()
         .single();
+      console.log('Competition created:', comp, compErr);
       if (compErr || !comp) throw new Error(compErr?.message || 'שגיאה ביצירת משחק');
       // שלח הזמנה
-      const { error: invErr } = await supabase
+      const { data: invitation, error: invErr } = await supabase
         .from('competition_invitations')
         .insert({
           from_profile_id: currentProfile.id,
@@ -133,12 +138,18 @@ const OnlineCompetition = () => {
           competition_id: comp.id,
           status: 'pending',
           created_at: new Date().toISOString(),
-        });
+        })
+        .select()
+        .single();
+      console.log('Invitation sent:', invitation, invErr);
       if (invErr) throw new Error(invErr.message);
       setInfoMsg('הזמנה נשלחה - ממתין לאישור...');
+      alert('הזמנה נשלחה!');
     } catch (err) {
       setError(err.message);
       setInfoMsg('שגיאה בשליחת הזמנה');
+      alert('שגיאה בשליחת הזמנה: ' + err.message);
+      console.error('Error sending invitation:', err);
     } finally {
       setSending(null);
       setTimeout(() => setInfoMsg(''), 2000);
