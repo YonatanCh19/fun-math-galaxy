@@ -303,6 +303,78 @@ export const useOnlinePresence = (currentProfile: ImportedProfile | null) => {
     };
   }, [currentProfile, navigate]);
 
+  // מנגנון fallback polling להזמנות אונליין
+  useEffect(() => {
+    if (!currentProfile) return;
+    let pollingActive = true;
+    let pollInvitations: NodeJS.Timeout | null = null;
+    let navigated = false;
+
+    // פונקציית polling
+    const startPolling = () => {
+      if (pollInvitations) return;
+      console.log('[POLLING] Starting fallback polling for invitations...');
+      pollInvitations = setInterval(async () => {
+        try {
+          const { data, error } = await supabase
+            .from('competition_invitations')
+            .select('*')
+            .or(`from_profile_id.eq.${currentProfile.id},to_profile_id.eq.${currentProfile.id}`)
+            .eq('status', 'accepted');
+          if (error) {
+            console.error('[POLLING] Error polling invitations:', error);
+            return;
+          }
+          if (data && data.length > 0 && !navigated) {
+            const invitation = data[0];
+            if (invitation && invitation.competition_id) {
+              navigated = true;
+              console.log('[POLLING] Navigating to game (polling):', invitation.competition_id);
+              navigate(`/online-game/${invitation.competition_id}`);
+              if (pollInvitations) clearInterval(pollInvitations);
+            }
+          }
+        } catch (e) {
+          console.error('[POLLING] Exception in polling:', e);
+        }
+      }, 2000);
+    };
+
+    // מאזין לסטטוס ערוצי realtime
+    let realtimeTimedOut = false;
+    const handleRealtimeStatus = (status: any, channelName: string) => {
+      console.log(`[REALTIME] Channel ${channelName} status:`, status);
+      if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED' || status === 403) {
+        realtimeTimedOut = true;
+        if (pollingActive) startPolling();
+      }
+    };
+
+    // עוטף את subscribe של realtime
+    const wrapSubscribe = (channel: any, channelName: string) => {
+      if (!channel) return;
+      channel.subscribe((status: any) => handleRealtimeStatus(status, channelName));
+    };
+
+    // עוטף את הערוצים הקיימים
+    wrapSubscribe(sentInvitationsChannelRef.current, 'sent-invitations');
+    wrapSubscribe(receivedInvitationsChannelRef.current, 'received-invitations');
+
+    // fallback: אם תוך 5 שניות אין חיבור realtime, התחל polling
+    setTimeout(() => {
+      if (!realtimeTimedOut && pollingActive) {
+        console.log('[POLLING] Realtime not connected after 5s, starting polling fallback.');
+        startPolling();
+      }
+    }, 5000);
+
+    // ניקוי
+    return () => {
+      pollingActive = false;
+      if (pollInvitations) clearInterval(pollInvitations);
+    };
+  }, [currentProfile, navigate]);
+
   return {
     onlineUsers,
     loading,
