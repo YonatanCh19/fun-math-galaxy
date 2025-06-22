@@ -73,15 +73,127 @@ const OnlineCompetition = () => {
     return matchesSearch && matchesFilter;
   });
 
+  // 2. החזר לוגיקה מלאה של שליחת הזמנה
+  async function sendInvitation(toProfileId: string) {
+    if (!selectedProfile || !toProfileId) return;
+    setLoading(true);
+    try {
+      // צור תחרות חדשה
+      const { data: competition, error: compError } = await supabase
+        .from('online_competitions')
+        .insert({
+          player1_id: selectedProfile.id,
+          player2_id: toProfileId,
+          player1_score: 0,
+          player2_score: 0,
+          status: 'pending',
+          started_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      if (compError || !competition) {
+        toast.error('שגיאה ביצירת תחרות');
+        setLoading(false);
+        return;
+      }
+      // שלח הזמנה
+      const { error: invError } = await supabase
+        .from('competition_invitations')
+        .insert({
+          from_profile_id: selectedProfile.id,
+          to_profile_id: toProfileId,
+          competition_id: competition.id,
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        });
+      if (invError) {
+        toast.error('שגיאה בשליחת הזמנה');
+        setLoading(false);
+        return;
+      }
+      toast.success('ההזמנה נשלחה! ממתין לאישור...');
+      // שמור מזהה תחרות לניווט אוטומטי
+      localStorage.setItem('currentCompetitionId', competition.id);
+      // נווט אוטומטית אם אתה השולח
+      navigate(`/online-game/${competition.id}`);
+    } catch (e) {
+      toast.error('שגיאה בשליחת הזמנה');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // 3. סנכרון הזמנות (Realtime + Polling)
+  useEffect(() => {
+    if (!selectedProfile) return;
+    let pollingActive = true;
+    let pollInvitations: NodeJS.Timeout | null = null;
+    let navigated = false;
+
+    // מאזין להזמנות שהתקבלו או נשלחו
+    const subscribeToInvitations = () => {
+      const uniqueChannelName = `invitations-${selectedProfile.id}-${Date.now()}`;
+      const channel = supabase
+        .channel(uniqueChannelName)
+        .on('postgres_changes', {
+          event: '*',
+          schema: 'public',
+          table: 'competition_invitations',
+          filter: `from_profile_id=eq.${selectedProfile.id},to_profile_id=eq.${selectedProfile.id}`
+        }, (payload) => {
+          const invitation = payload.new as CompetitionInvitation | undefined;
+          if (invitation && invitation.status === 'accepted' && invitation.competition_id && !navigated) {
+            navigated = true;
+            localStorage.setItem('currentCompetitionId', invitation.competition_id);
+            navigate(`/online-game/${invitation.competition_id}`);
+          }
+        })
+        .subscribe((status) => {
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            // fallback polling
+            startPolling();
+          }
+        });
+      return channel;
+    };
+
+    // fallback polling
+    const startPolling = () => {
+      if (pollInvitations) return;
+      pollInvitations = setInterval(async () => {
+        const { data, error } = await supabase
+          .from('competition_invitations')
+          .select('*')
+          .or(`from_profile_id.eq.${selectedProfile.id},to_profile_id.eq.${selectedProfile.id}`)
+          .eq('status', 'accepted');
+        if (data && data.length > 0 && !navigated) {
+          const invitation = data[0] as CompetitionInvitation;
+          if (invitation.competition_id) {
+            navigated = true;
+            localStorage.setItem('currentCompetitionId', invitation.competition_id);
+            navigate(`/online-game/${invitation.competition_id}`);
+            if (pollInvitations) clearInterval(pollInvitations);
+          }
+        }
+      }, 2000);
+    };
+
+    const channel = subscribeToInvitations();
+    // fallback: אם תוך 5 שניות אין חיבור realtime, התחל polling
+    setTimeout(() => {
+      if (!navigated && pollingActive) startPolling();
+    }, 5000);
+
+    return () => {
+      pollingActive = false;
+      if (pollInvitations) clearInterval(pollInvitations);
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [selectedProfile, navigate]);
+
   return (
     <div className="min-h-screen bg-kidGradient font-varela p-4">
       <div className="max-w-4xl mx-auto">
-        {/* Debug info זמני */}
-        <div className="mb-4 p-2 bg-yellow-100 rounded text-xs text-gray-700">
-          <div>isLoading: {String(isLoading)}</div>
-          <div>onlineUsers.length: {onlineUsers.length}</div>
-          <div>onlineUsers: {JSON.stringify(onlineUsers)}</div>
-        </div>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <button
@@ -185,8 +297,8 @@ const OnlineCompetition = () => {
                     </div>
                   </div>
                   <button
-                    onClick={() => toast('שליחת הזמנה לאקטיבית (דמו)')}
-                    disabled={user.profile_id === selectedProfile.id}
+                    onClick={() => sendInvitation(user.profile_id)}
+                    disabled={user.profile_id === selectedProfile.id || loading}
                     className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg font-bold hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
                   >
                     {user.profile_id === selectedProfile.id ? 'זה אתה' : 'הזמן לתחרות'}
