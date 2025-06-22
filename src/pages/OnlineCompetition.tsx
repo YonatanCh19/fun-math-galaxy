@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
-import { useOnlinePresence } from '@/hooks/useOnlinePresence';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import LoadingSpinner from '@/components/LoadingSpinner';
@@ -26,17 +25,19 @@ type CompetitionInvitation = {
 const OnlineCompetition = () => {
   const { user, selectedProfile } = useAuth();
   const navigate = useNavigate();
-  const { onlineUsers, loading: isLoading, error } = useOnlinePresence(selectedProfile);
+  const [users, setUsers] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [invitations, setInvitations] = useState<CompetitionInvitation[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterSameEmail, setFilterSameEmail] = useState(false);
 
   // לוג בסיסי
-  console.log('OnlineCompetition render', { user, selectedProfile, onlineUsers, isLoading });
+  console.log('OnlineCompetition render', { user, selectedProfile, users, isLoading });
 
   // לוגים ל-debug
-  console.log('[OnlineCompetition] onlineUsers:', onlineUsers);
+  console.log('[OnlineCompetition] users:', users);
 
   // תנאי טעינה בסיסיים
   if (!user || !selectedProfile) {
@@ -66,11 +67,11 @@ const OnlineCompetition = () => {
     );
   }
 
-  // סינון משתמשים
-  const filteredUsers = onlineUsers.filter(user => {
-    const matchesSearch = user.profile.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesFilter = !filterSameEmail || user.profile.is_same_user;
-    return matchesSearch && matchesFilter;
+  // סינון משתמשים בסיסי
+  const filteredUsers = users.filter(user => {
+    const matchesSearch = user.name?.toLowerCase().includes(searchTerm.toLowerCase());
+    // אין סינון מתקדם כרגע
+    return matchesSearch;
   });
 
   // 2. החזר לוגיקה מלאה של שליחת הזמנה
@@ -191,6 +192,20 @@ const OnlineCompetition = () => {
     };
   }, [selectedProfile, navigate]);
 
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const { data } = await supabase.from('profiles').select('*');
+        setUsers(data || []);
+        setIsLoading(false);
+      } catch (err) {
+        setError(err?.message || 'שגיאה בטעינת משתמשים');
+        setIsLoading(false);
+      }
+    };
+    fetchUsers();
+  }, []);
+
   return (
     <div className="min-h-screen bg-kidGradient font-varela p-4">
       <div className="max-w-4xl mx-auto">
@@ -257,9 +272,9 @@ const OnlineCompetition = () => {
         <div className="bg-white/90 rounded-xl p-4 md:p-6 shadow-lg">
           <h2 className="text-xl font-bold text-blue-900 mb-4 flex items-center gap-2">
             <Users size={24} />
-            משתמשים מחוברים ({filteredUsers.length})
+            משתמשים ({filteredUsers.length})
           </h2>
-          <div className="text-sm text-gray-500 mb-2">נמצאו {onlineUsers.length} משתמשים מחוברים (לפני סינון)</div>
+          <div className="text-sm text-gray-500 mb-2">נמצאו {users.length} משתמשים (לפני סינון)</div>
 
           {filteredUsers.length === 0 ? (
             <div className="text-center py-8 text-gray-600">
@@ -271,37 +286,21 @@ const OnlineCompetition = () => {
             <div className="grid gap-4 md:grid-cols-2">
               {filteredUsers.map((user) => (
                 <div
-                  key={user.profile_id}
+                  key={user.id}
                   className="flex flex-col sm:flex-row sm:items-center justify-between bg-gradient-to-r from-blue-100 to-purple-100 p-4 rounded-lg gap-3"
                 >
                   <div className="flex items-center gap-3">
-                    {renderAvatarByType(user.profile.avatar_character as AvatarCharacter, 'sm')}
+                    {renderAvatarByType(user.avatar_character as AvatarCharacter, 'sm')}
                     <div>
-                      <p className="font-bold text-blue-900">{user.profile.name}</p>
-                      <div className="flex flex-col gap-1">
-                        <span className="text-sm text-green-600 flex items-center gap-1">
-                          <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                          זמין למשחק
-                        </span>
-                        {user.profile.email_preview && (
-                          <span className="text-xs text-gray-600">
-                            {user.profile.email_preview}
-                          </span>
-                        )}
-                        {user.profile.is_same_user && (
-                          <span className="text-xs bg-blue-200 text-blue-800 px-2 py-1 rounded-full w-fit">
-                            מהחשבון שלך
-                          </span>
-                        )}
-                      </div>
+                      <p className="font-bold text-blue-900">{user.name}</p>
                     </div>
                   </div>
+                  {/* כפתור דמו בלבד */}
                   <button
-                    onClick={() => sendInvitation(user.profile_id)}
-                    disabled={user.profile_id === selectedProfile.id || loading}
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg font-bold hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed w-full sm:w-auto"
+                    disabled
+                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg font-bold opacity-50 cursor-not-allowed w-full sm:w-auto"
                   >
-                    {user.profile_id === selectedProfile.id ? 'זה אתה' : 'הזמן לתחרות'}
+                    הזמן לתחרות
                   </button>
                 </div>
               ))}
