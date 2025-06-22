@@ -50,7 +50,7 @@ const OnlineCompetition = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-kidGradient font-varela">
-        <LoadingSpinner message="טוען משתמשים מחוברים..." />
+        <LoadingSpinner message="טוען משתמשים..." />
       </div>
     );
   }
@@ -61,7 +61,7 @@ const OnlineCompetition = () => {
         <div className="bg-white p-6 rounded-xl shadow text-red-700 text-center">
           <h2 className="text-xl font-bold mb-2">שגיאה בטעינת משתמשים</h2>
           <div className="mb-2">{error}</div>
-          <button onClick={() => window.location.reload()} className="bg-red-500 text-white px-4 py-2 rounded">רענן דף</button>
+          <button onClick={() => window.location.reload()} className="bg-red-500 text-white px-4 py-2 rounded">נסה שוב</button>
         </div>
       </div>
     );
@@ -193,17 +193,45 @@ const OnlineCompetition = () => {
   }, [selectedProfile, navigate]);
 
   useEffect(() => {
+    let didTimeout = false;
+    let timeoutId: NodeJS.Timeout | null = null;
     const fetchUsers = async () => {
+      console.log('Starting to fetch users...');
       try {
-        const { data } = await supabase.from('profiles').select('*');
-        setUsers(data || []);
-        setIsLoading(false);
+        const { data, error } = await supabase.from('profiles').select('*');
+        console.log('Query result:', { data, error });
+        if (error) {
+          console.error('Supabase error:', error);
+          setError(error.message);
+        } else {
+          console.log('Users found:', data?.length || 0);
+          setUsers(data || []);
+        }
       } catch (err) {
-        setError(err?.message || 'שגיאה בטעינת משתמשים');
-        setIsLoading(false);
+        console.error('Fetch error:', err);
+        setError(err.message);
+      } finally {
+        if (!didTimeout) {
+          setIsLoading(false);
+          console.log('Loading finished');
+        }
       }
     };
+    setIsLoading(true);
+    setError(null);
     fetchUsers();
+    // timeout לטעינה
+    timeoutId = setTimeout(() => {
+      if (isLoading) {
+        didTimeout = true;
+        setIsLoading(false);
+        setError('הטעינה נמשכת יותר מדי זמן. נסה לרענן את הדף.');
+        console.error('Loading timeout after 10 seconds');
+      }
+    }, 10000);
+    return () => {
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, []);
 
   return (
