@@ -1,4 +1,3 @@
-
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Profile } from '@/hooks/useAuth';
@@ -105,7 +104,7 @@ export const useOnlinePresence = (currentProfile: Profile | null) => {
           user.profile_id !== currentProfile?.id
         );
 
-        console.log('Online users from all emails:', filteredUsers);
+        console.log('Online users from all emails (after filter):', filteredUsers);
         setOnlineUsers(filteredUsers);
       } else {
         setOnlineUsers([]);
@@ -142,38 +141,36 @@ export const useOnlinePresence = (currentProfile: Profile | null) => {
     // Clean up existing channel before creating new one
     cleanupChannel();
 
-    // Create new channel with unique name
-    if (!isSubscribed) {
-      const uniqueChannelName = `user-presence-all-${currentProfile.id}-${Date.now()}`;
-      console.log('Creating new presence channel:', uniqueChannelName);
-      
-      try {
-        channelRef.current = supabase
-          .channel(uniqueChannelName)
-          .on(
-            'postgres_changes',
-            {
-              event: '*',
-              schema: 'public',
-              table: 'user_presence'
-            },
-            (payload) => {
-              console.log('Presence change detected:', payload);
-              fetchOnlineUsers();
-            }
-          )
-          .subscribe((status) => {
-            console.log('Presence channel subscription status:', status);
-            if (status === 'SUBSCRIBED') {
-              setIsSubscribed(true);
-            } else if (status === 'CHANNEL_ERROR') {
-              console.error('Channel subscription error');
-              setIsSubscribed(false);
-            }
-          });
-      } catch (error) {
-        console.error('Error creating presence channel:', error);
-      }
+    // Create new channel with fixed name for all users
+    const uniqueChannelName = 'user-presence-all';
+    console.log('Creating new presence channel:', uniqueChannelName);
+    
+    try {
+      channelRef.current = supabase
+        .channel(uniqueChannelName)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'user_presence'
+          },
+          (payload) => {
+            console.log('Presence change detected:', payload);
+            fetchOnlineUsers();
+          }
+        )
+        .subscribe((status) => {
+          console.log('Presence channel subscription status:', status);
+          if (status === 'SUBSCRIBED') {
+            setIsSubscribed(true);
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('Channel subscription error');
+            setIsSubscribed(false);
+          }
+        });
+    } catch (error) {
+      console.error('Error creating presence channel:', error);
     }
 
     // Set up interval to keep presence updated

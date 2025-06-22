@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/hooks/useAuth';
 import { useNavigate } from 'react-router-dom';
@@ -128,11 +127,25 @@ export default function OnlineCompetition() {
             event: '*',
             schema: 'public',
             table: 'competition_invitations',
-            filter: `to_profile_id=eq.${selectedProfile.id}`
+            filter: `to_profile_id=eq.${selectedProfile.id}|from_profile_id=eq.${selectedProfile.id}`
           },
           (payload) => {
             console.log('Invitation change detected:', payload);
             fetchInvitations();
+
+            const invitation = payload.new as any;
+            if (
+              invitation &&
+              typeof invitation === 'object' &&
+              invitation.status === 'accepted' &&
+              (invitation.to_profile_id === selectedProfile.id || invitation.from_profile_id === selectedProfile.id)
+            ) {
+              console.log('Navigating both users to game:', invitation.competition_id);
+              localStorage.setItem('currentCompetitionId', invitation.competition_id);
+              if (!window.location.pathname.includes(`/online-game/${invitation.competition_id}`)) {
+                navigate(`/online-game/${invitation.competition_id}`);
+              }
+            }
           }
         )
         .subscribe((status) => {
@@ -303,11 +316,13 @@ export default function OnlineCompetition() {
   };
 
   // Filter users based on search and filter criteria
+  console.log('All onlineUsers from hook:', onlineUsers);
   const filteredUsers = onlineUsers.filter(user => {
     const matchesSearch = user.profile.name?.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesFilter = !filterSameEmail || user.profile.is_same_user;
     return matchesSearch && matchesFilter;
   });
+  console.log('Filtered users:', filteredUsers);
 
   if (!user || !selectedProfile) {
     return null;
@@ -427,6 +442,7 @@ export default function OnlineCompetition() {
             <Users size={24} />
             משתמשים מחוברים ({filteredUsers.length})
           </h2>
+          <div className="text-sm text-gray-500 mb-2">נמצאו {onlineUsers.length} משתמשים מחוברים (לפני סינון)</div>
 
           {presenceLoading ? (
             <div className="flex justify-center py-8">
