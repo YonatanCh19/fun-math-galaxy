@@ -33,6 +33,10 @@ export default function OnlineCompetition() {
   const [filterSameEmail, setFilterSameEmail] = useState(false);
   const channelRef = useRef<any>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // DEBUGGING
+  console.log('OnlineCompetition render', { user, selectedProfile, onlineUsers, presenceLoading, invitations });
 
   useEffect(() => {
     console.log('OnlineCompetition mounted with profile:', selectedProfile?.id);
@@ -323,6 +327,17 @@ export default function OnlineCompetition() {
     return matchesSearch && matchesFilter;
   });
   console.log('Filtered users:', filteredUsers);
+
+  // fallback UI: אין משתמשים מחוברים כלל
+  if (!onlineUsers || onlineUsers.length === 0) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-kidGradient font-varela">
+        <Users size={48} className="mb-4 text-gray-400" />
+        <p className="text-lg mb-2">אין משתמשים מחוברים כרגע</p>
+        <button className="bg-blue-500 text-white px-4 py-2 rounded" onClick={() => window.location.reload()}>רענן</button>
+      </div>
+    );
+  }
 
   if (!user || !selectedProfile) {
     return null;
