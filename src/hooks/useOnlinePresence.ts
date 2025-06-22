@@ -1,19 +1,28 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { Profile } from '@/hooks/useAuth';
+import { Profile as ImportedProfile } from '@/hooks/useAuth';
+
+export interface Profile {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+  avatar_character?: string;
+  pin?: string;
+}
 
 export type OnlineUser = {
   profile_id: string;
   profile: Profile & {
-    email_preview?: string;
-    is_same_user?: boolean;
+    email_preview: string;
+    is_same_user: boolean;
   };
   is_online: boolean;
   last_seen: string;
-  user_id?: string;
+  user_id: string;
 };
 
-export const useOnlinePresence = (currentProfile: Profile | null) => {
+export const useOnlinePresence = (currentProfile: ImportedProfile | null) => {
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [loading, setLoading] = useState(true);
   const channelRef = useRef<any>(null);
@@ -59,49 +68,51 @@ export const useOnlinePresence = (currentProfile: Profile | null) => {
 
       console.log('Presence data:', presenceData);
 
-      if (presenceData && presenceData.length > 0) {
-        const profileIds = presenceData.map(p => p.profile_id);
-        
-        const { data: profilesData, error: profilesError } = await supabase
+      if (presenceData && presenceData.length > 0 && Array.isArray(presenceData)) {
+        const { data: rawProfilesData, error: profilesError } = await supabase
           .from('profiles')
           .select('*')
-          .in('id', profileIds);
-
+          .in('id', presenceData.map((p: any) => p?.profile_id).filter(Boolean));
         if (profilesError) {
           console.error('Error fetching profiles:', profilesError);
           return;
         }
-
-        console.log('Profiles data:', profilesData);
-
-        // Get user emails for preview
-        const userIds = profilesData?.map(p => p.user_id).filter(Boolean) || [];
+        const profilesData: Profile[] = Array.isArray(rawProfilesData) ? rawProfilesData as Profile[] : [];
+        const validProfiles: Profile[] = profilesData.filter(
+          (p): p is Profile =>
+            !!p &&
+            typeof p === 'object' &&
+            typeof p.id === 'string' &&
+            typeof p.user_id === 'string' &&
+            typeof p.name === 'string' &&
+            typeof p.created_at === 'string'
+        );
+        const userIds = Array.isArray(profilesData) ? profilesData.map(p => p?.user_id).filter(Boolean) : [];
         const { data: usersData } = await supabase.auth.admin.listUsers();
         
-        const usersWithPresence: OnlineUser[] = presenceData.map(presence => {
-          const profile = profilesData?.find(p => p.id === presence.profile_id);
+        const usersWithPresence: OnlineUser[] = presenceData.map((presence: any) => {
+          if (!presence?.profile_id) return null;
+          const profile: Profile | undefined = validProfiles.find((p: Profile) => p.id === presence?.profile_id);
           if (!profile) return null;
-          
-          const user = usersData?.users?.find(u => u.id === profile.user_id);
-          const emailPreview = user?.email ? user.email.split('@')[0] + '@...' : undefined;
+          const user = usersData?.users?.find((u: any) => u && u.id === profile.user_id);
+          const emailPreview = user?.email ? user.email.split('@')[0] + '@...' : '';
           const isSameUser = profile.user_id === currentProfile?.user_id;
-          
           return {
             profile_id: presence.profile_id,
             profile: {
               ...profile,
-              email_preview: emailPreview,
-              is_same_user: isSameUser,
-            } as Profile & { email_preview?: string; is_same_user?: boolean },
-            is_online: presence.is_online,
-            last_seen: presence.last_seen,
-            user_id: profile?.user_id,
+              email_preview: emailPreview ?? '',
+              is_same_user: isSameUser ?? false,
+            },
+            is_online: presence.is_online ?? false,
+            last_seen: presence.last_seen ?? '',
+            user_id: profile.user_id ?? '',
           };
-        }).filter(Boolean) as OnlineUser[];
+        }).filter((u): u is OnlineUser => !!u && typeof u.profile_id === 'string' && typeof u.user_id === 'string' && typeof u.profile.email_preview === 'string' && typeof u.profile.is_same_user === 'boolean');
 
         // Filter out current profile
         const filteredUsers = usersWithPresence.filter(user => 
-          user.profile_id !== currentProfile?.id
+          user && user.profile_id && currentProfile?.id ? user.profile_id !== currentProfile.id : true
         );
 
         console.log('Online users from all emails (after filter):', filteredUsers);
