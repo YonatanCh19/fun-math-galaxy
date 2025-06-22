@@ -26,7 +26,7 @@ type CompetitionInvitation = {
 const OnlineCompetition = () => {
   const { user, selectedProfile } = useAuth();
   const navigate = useNavigate();
-  const { onlineUsers, loading: isLoading } = useOnlinePresence(selectedProfile);
+  const { onlineUsers, loading: isLoading, error } = useOnlinePresence(selectedProfile);
   const [invitations, setInvitations] = useState<CompetitionInvitation[]>([]);
   const [loading, setLoading] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
@@ -34,6 +34,9 @@ const OnlineCompetition = () => {
 
   // לוג בסיסי
   console.log('OnlineCompetition render', { user, selectedProfile, onlineUsers, isLoading });
+
+  // לוגים ל-debug
+  console.log('[OnlineCompetition] onlineUsers:', onlineUsers);
 
   // תנאי טעינה בסיסיים
   if (!user || !selectedProfile) {
@@ -51,6 +54,18 @@ const OnlineCompetition = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-red-100 font-varela">
+        <div className="bg-white p-6 rounded-xl shadow text-red-700 text-center">
+          <h2 className="text-xl font-bold mb-2">שגיאה בטעינת משתמשים</h2>
+          <div className="mb-2">{error}</div>
+          <button onClick={() => window.location.reload()} className="bg-red-500 text-white px-4 py-2 rounded">רענן דף</button>
+        </div>
+      </div>
+    );
+  }
+
   // סינון משתמשים
   const filteredUsers = onlineUsers.filter(user => {
     const matchesSearch = user.profile.name?.toLowerCase().includes(searchTerm.toLowerCase());
@@ -61,6 +76,12 @@ const OnlineCompetition = () => {
   return (
     <div className="min-h-screen bg-kidGradient font-varela p-4">
       <div className="max-w-4xl mx-auto">
+        {/* Debug info זמני */}
+        <div className="mb-4 p-2 bg-yellow-100 rounded text-xs text-gray-700">
+          <div>isLoading: {String(isLoading)}</div>
+          <div>onlineUsers.length: {onlineUsers.length}</div>
+          <div>onlineUsers: {JSON.stringify(onlineUsers)}</div>
+        </div>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <button

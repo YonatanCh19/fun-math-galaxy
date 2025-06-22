@@ -154,13 +154,15 @@ export const useOnlinePresence = (currentProfile: ImportedProfile | null) => {
     if (!currentProfile?.id) return;
     setLoading(true);
     setError(null);
+    console.log('[useOnlinePresence] התחלת טעינה עבור פרופיל:', currentProfile.id);
 
     // ניקוי ערוץ קיים לפני יצירת חדש
     if (presenceChannelRef.current) {
       try {
         supabase.removeChannel(presenceChannelRef.current);
+        console.log('[useOnlinePresence] ניקוי ערוץ קודם');
       } catch (e) {
-        console.warn('שגיאה בניקוי ערוץ ישן:', e);
+        console.warn('[useOnlinePresence] שגיאה בניקוי ערוץ ישן:', e);
       }
       presenceChannelRef.current = null;
     }
@@ -176,37 +178,50 @@ export const useOnlinePresence = (currentProfile: ImportedProfile | null) => {
           schema: 'public',
           table: 'user_presence',
         }, (payload) => {
-          // כאן יש להפעיל fetchOnlineUsers או עדכון סטייט
-          // ...
+          console.log('[useOnlinePresence] התקבל עדכון מהערוץ:', payload);
+          fetchOnlineUsers();
         })
         .subscribe((status) => {
+          console.log('[useOnlinePresence] channel status:', status);
           if (status === 'SUBSCRIBED') {
             setLoading(false);
           }
         });
       presenceChannelRef.current = channel;
+      console.log('[useOnlinePresence] ערוץ חדש נוצר:', uniqueChannelName);
     } catch (e) {
       setError('שגיאה ביצירת ערוץ: ' + e.message);
-      console.error('שגיאה ביצירת ערוץ:', e);
+      console.error('[useOnlinePresence] שגיאה ביצירת ערוץ:', e);
     }
 
-    // דמו: סימולציה של קבלת משתמשים (להחליף בלוגיקה האמיתית)
-    setTimeout(() => {
-      setOnlineUsers([]); // כאן יש להחזיר את המשתמשים האמיתיים
-      setLoading(false);
-    }, 1000);
+    // טען משתמשים ראשונית
+    fetchOnlineUsers();
+
+    // fallback: טעינה ישירה אם אין משתמשים תוך 5 שניות
+    const fallbackTimeout = setTimeout(() => {
+      if (onlineUsers.length === 0 && !error) {
+        console.log('[useOnlinePresence] fallback לטעינה ישירה');
+        fetchOnlineUsers();
+      }
+    }, 5000);
 
     return () => {
+      clearTimeout(fallbackTimeout);
       if (presenceChannelRef.current) {
         try {
           supabase.removeChannel(presenceChannelRef.current);
+          console.log('[useOnlinePresence] ניקוי ערוץ ביציאה');
         } catch (e) {
-          console.warn('שגיאה בניקוי ערוץ ביציאה:', e);
+          console.warn('[useOnlinePresence] שגיאה בניקוי ערוץ ביציאה:', e);
         }
         presenceChannelRef.current = null;
       }
     };
   }, [currentProfile?.id]);
+
+  useEffect(() => {
+    console.log('[useOnlinePresence] onlineUsers ל-render:', onlineUsers);
+  }, [onlineUsers]);
 
   useEffect(() => {
     if (!currentProfile) return;
