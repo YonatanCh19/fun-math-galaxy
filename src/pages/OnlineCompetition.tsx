@@ -1,89 +1,120 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useAuth } from '@/hooks/useAuth';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-import { toast } from 'sonner';
-import LoadingSpinner from '@/components/LoadingSpinner';
-import { ArrowLeft, Users, Trophy, Globe, Shield, Clock, Search, Filter } from 'lucide-react';
 import { renderAvatarByType, AvatarCharacter } from '@/components/AvatarSelector';
+import { Users, Search, Send } from 'lucide-react';
 
-type CompetitionInvitation = {
-  id: string;
-  from_profile_id: string;
-  to_profile_id: string;
-  competition_id: string;
-  status: string;
-  created_at: string;
-  from_profile?: {
-    id: string;
-    name: string;
-    avatar_character?: string;
-    user_id?: string;
-  };
+const getCurrentProfile = () => {
+  // נסה להביא את הפרופיל הנבחר מה-localStorage או context (פשטות)
+  try {
+    const profile = localStorage.getItem('selectedProfile');
+    return profile ? JSON.parse(profile) : null;
+  } catch {
+    return null;
+  }
 };
 
 const OnlineCompetition = () => {
-  const { user, selectedProfile } = useAuth();
-  const navigate = useNavigate();
-  const [users, setUsers] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [invitations, setInvitations] = useState<CompetitionInvitation[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterSameEmail, setFilterSameEmail] = useState(false);
-
   // לוג בסיסי
-  console.log('OnlineCompetition render', { user, selectedProfile, users, isLoading });
+  console.log('OnlineCompetition render');
 
-  // לוגים ל-debug
-  console.log('[OnlineCompetition] users:', users);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [search, setSearch] = useState('');
+  const [sending, setSending] = useState<string | null>(null); // id של משתמש שנשלחת אליו הזמנה
+  const [inviteModal, setInviteModal] = useState(null); // {from_profile, invitation_id, competition_id}
+  const [waitingForAccept, setWaitingForAccept] = useState<string | null>(null); // competition_id
+  const [infoMsg, setInfoMsg] = useState('');
+  const [polling, setPolling] = useState(false);
+  const [myInvitations, setMyInvitations] = useState([]);
 
-  // תנאי טעינה בסיסיים
-  if (!user || !selectedProfile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-kidGradient font-varela">
-        <LoadingSpinner message="טוען משתמש..." />
-      </div>
-    );
-  }
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-kidGradient font-varela">
-        <LoadingSpinner message="טוען משתמשים..." />
-      </div>
-    );
-  }
+  const currentProfile = getCurrentProfile();
 
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-red-100 font-varela">
-        <div className="bg-white p-6 rounded-xl shadow text-red-700 text-center">
-          <h2 className="text-xl font-bold mb-2">שגיאה בטעינת משתמשים</h2>
-          <div className="mb-2">{error}</div>
-          <button onClick={() => window.location.reload()} className="bg-red-500 text-white px-4 py-2 rounded">נסה שוב</button>
-        </div>
-      </div>
-    );
-  }
+  // 1. טען רק משתמשים מחוברים (is_online=true)
+  useEffect(() => {
+    const fetchUsers = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const { data, error } = await supabase.from('profiles').select('*');
+        if (error) setError(error.message);
+        else {
+          // טען רק משתמשים שמחוברים (is_online=true)
+          const { data: presence } = await supabase.from('user_presence').select('*').eq('is_online', true);
+          const onlineIds = (presence || []).map(p => p.profile_id);
+          setUsers((data || []).filter(u => onlineIds.includes(u.id) && (!currentProfile || u.id !== currentProfile.id)));
+        }
+      } catch (err) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchUsers();
+  }, [currentProfile]);
 
-  // סינון משתמשים בסיסי
-  const filteredUsers = users.filter(user => {
-    const matchesSearch = user.name?.toLowerCase().includes(searchTerm.toLowerCase());
-    // אין סינון מתקדם כרגע
-    return matchesSearch;
-  });
+  // 2. Polling להזמנות נכנסות/יוצאות
+  useEffect(() => {
+    if (!currentProfile) return;
+    setPolling(true);
+    let pollInterval = setInterval(async () => {
+      // בדוק הזמנות נכנסות
+      const { data: incoming } = await supabase
+        .from('competition_invitations')
+        .select('*')
+        .eq('to_profile_id', currentProfile.id)
+        .eq('status', 'pending');
+      if (incoming && incoming.length > 0) {
+        // הבא רק את ההזמנה האחרונה
+        const invitation = incoming[0];
+        // הבא פרטי שולח
+        const { data: fromProfile } = await supabase.from('profiles').select('*').eq('id', invitation.from_profile_id).single();
+        setInviteModal({
+          from_profile: fromProfile,
+          invitation_id: invitation.id,
+          competition_id: invitation.competition_id
+        });
+      } else {
+        setInviteModal(null);
+      }
+      // בדוק הזמנות ששלחתי
+      const { data: outgoing } = await supabase
+        .from('competition_invitations')
+        .select('*')
+        .eq('from_profile_id', currentProfile.id)
+        .eq('status', 'pending');
+      setMyInvitations(outgoing || []);
+      // בדוק אם יש הזמנה שאושרה
+      const { data: accepted } = await supabase
+        .from('competition_invitations')
+        .select('*')
+        .or(`from_profile_id.eq.${currentProfile.id},to_profile_id.eq.${currentProfile.id}`)
+        .eq('status', 'accepted');
+      if (accepted && accepted.length > 0) {
+        const compId = accepted[0].competition_id;
+        setInfoMsg('מתחיל משחק...');
+        setTimeout(() => {
+          window.location.href = `/online-game/${compId}`;
+        }, 1000);
+      }
+    }, 3000);
+    return () => {
+      setPolling(false);
+      clearInterval(pollInterval);
+    };
+  }, [currentProfile]);
 
-  // 2. החזר לוגיקה מלאה של שליחת הזמנה
-  async function sendInvitation(toProfileId: string) {
-    if (!selectedProfile || !toProfileId) return;
-    setLoading(true);
+  // 3. שליחת הזמנה אמיתית
+  const handleSendInvitation = async (toProfileId: string) => {
+    if (!currentProfile) return;
+    setSending(toProfileId);
+    setInfoMsg('שולח הזמנה...');
     try {
-      // צור תחרות חדשה
-      const { data: competition, error: compError } = await supabase
+      // צור competition חדש
+      const { data: comp, error: compErr } = await supabase
         .from('online_competitions')
         .insert({
-          player1_id: selectedProfile.id,
+          player1_id: currentProfile.id,
           player2_id: toProfileId,
           player1_score: 0,
           player2_score: 0,
@@ -92,252 +123,175 @@ const OnlineCompetition = () => {
         })
         .select()
         .single();
-      if (compError || !competition) {
-        toast.error('שגיאה ביצירת תחרות');
-        setLoading(false);
-        return;
-      }
+      if (compErr || !comp) throw new Error(compErr?.message || 'שגיאה ביצירת משחק');
       // שלח הזמנה
-      const { error: invError } = await supabase
+      const { error: invErr } = await supabase
         .from('competition_invitations')
         .insert({
-          from_profile_id: selectedProfile.id,
+          from_profile_id: currentProfile.id,
           to_profile_id: toProfileId,
-          competition_id: competition.id,
+          competition_id: comp.id,
           status: 'pending',
           created_at: new Date().toISOString(),
         });
-      if (invError) {
-        toast.error('שגיאה בשליחת הזמנה');
-        setLoading(false);
-        return;
-      }
-      toast.success('ההזמנה נשלחה! ממתין לאישור...');
-      // שמור מזהה תחרות לניווט אוטומטי
-      localStorage.setItem('currentCompetitionId', competition.id);
-      // נווט אוטומטית אם אתה השולח
-      navigate(`/online-game/${competition.id}`);
-    } catch (e) {
-      toast.error('שגיאה בשליחת הזמנה');
+      if (invErr) throw new Error(invErr.message);
+      setInfoMsg('הזמנה נשלחה - ממתין לאישור...');
+    } catch (err) {
+      setError(err.message);
+      setInfoMsg('שגיאה בשליחת הזמנה');
     } finally {
-      setLoading(false);
+      setSending(null);
+      setTimeout(() => setInfoMsg(''), 2000);
     }
+  };
+
+  // 4. אישור/דחיית הזמנה
+  const handleAccept = async () => {
+    if (!inviteModal) return;
+    setInfoMsg('מאשר הזמנה...');
+    try {
+      await supabase
+        .from('competition_invitations')
+        .update({ status: 'accepted' })
+        .eq('id', inviteModal.invitation_id);
+      setInfoMsg('מתחיל משחק...');
+      setTimeout(() => {
+        window.location.href = `/online-game/${inviteModal.competition_id}`;
+      }, 1000);
+    } catch (err) {
+      setError(err.message);
+      setInfoMsg('שגיאה באישור הזמנה');
+    }
+  };
+  const handleReject = async () => {
+    if (!inviteModal) return;
+    setInfoMsg('דוחה הזמנה...');
+    try {
+      await supabase
+        .from('competition_invitations')
+        .update({ status: 'rejected' })
+        .eq('id', inviteModal.invitation_id);
+      setInviteModal(null);
+      setInfoMsg('ההזמנה נדחתה');
+      setTimeout(() => setInfoMsg(''), 2000);
+    } catch (err) {
+      setError(err.message);
+      setInfoMsg('שגיאה בדחיית הזמנה');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-kidGradient font-varela">
+        <div className="text-xl text-blue-800 animate-pulse">טוען משתמשים...</div>
+      </div>
+    );
   }
-
-  // 3. סנכרון הזמנות (Realtime + Polling)
-  useEffect(() => {
-    if (!selectedProfile) return;
-    let pollingActive = true;
-    let pollInvitations: NodeJS.Timeout | null = null;
-    let navigated = false;
-
-    // מאזין להזמנות שהתקבלו או נשלחו
-    const subscribeToInvitations = () => {
-      const uniqueChannelName = `invitations-${selectedProfile.id}-${Date.now()}`;
-      const channel = supabase
-        .channel(uniqueChannelName)
-        .on('postgres_changes', {
-          event: '*',
-          schema: 'public',
-          table: 'competition_invitations',
-          filter: `from_profile_id=eq.${selectedProfile.id},to_profile_id=eq.${selectedProfile.id}`
-        }, (payload) => {
-          const invitation = payload.new as CompetitionInvitation | undefined;
-          if (invitation && invitation.status === 'accepted' && invitation.competition_id && !navigated) {
-            navigated = true;
-            localStorage.setItem('currentCompetitionId', invitation.competition_id);
-            navigate(`/online-game/${invitation.competition_id}`);
-          }
-        })
-        .subscribe((status) => {
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            // fallback polling
-            startPolling();
-          }
-        });
-      return channel;
-    };
-
-    // fallback polling
-    const startPolling = () => {
-      if (pollInvitations) return;
-      pollInvitations = setInterval(async () => {
-        const { data, error } = await supabase
-          .from('competition_invitations')
-          .select('*')
-          .or(`from_profile_id.eq.${selectedProfile.id},to_profile_id.eq.${selectedProfile.id}`)
-          .eq('status', 'accepted');
-        if (data && data.length > 0 && !navigated) {
-          const invitation = data[0] as CompetitionInvitation;
-          if (invitation.competition_id) {
-            navigated = true;
-            localStorage.setItem('currentCompetitionId', invitation.competition_id);
-            navigate(`/online-game/${invitation.competition_id}`);
-            if (pollInvitations) clearInterval(pollInvitations);
-          }
-        }
-      }, 2000);
-    };
-
-    const channel = subscribeToInvitations();
-    // fallback: אם תוך 5 שניות אין חיבור realtime, התחל polling
-    setTimeout(() => {
-      if (!navigated && pollingActive) startPolling();
-    }, 5000);
-
-    return () => {
-      pollingActive = false;
-      if (pollInvitations) clearInterval(pollInvitations);
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, [selectedProfile, navigate]);
-
-  useEffect(() => {
-    let didTimeout = false;
-    let timeoutId: NodeJS.Timeout | null = null;
-    const fetchUsers = async () => {
-      console.log('Starting to fetch users...');
-      try {
-        const { data, error } = await supabase.from('profiles').select('*');
-        console.log('Query result:', { data, error });
-        if (error) {
-          console.error('Supabase error:', error);
-          setError(error.message);
-        } else {
-          console.log('Users found:', data?.length || 0);
-          setUsers(data || []);
-        }
-      } catch (err) {
-        console.error('Fetch error:', err);
-        setError(err.message);
-      } finally {
-        if (!didTimeout) {
-          setIsLoading(false);
-          console.log('Loading finished');
-        }
-      }
-    };
-    setIsLoading(true);
-    setError(null);
-    fetchUsers();
-    // timeout לטעינה
-    timeoutId = setTimeout(() => {
-      if (isLoading) {
-        didTimeout = true;
-        setIsLoading(false);
-        setError('הטעינה נמשכת יותר מדי זמן. נסה לרענן את הדף.');
-        console.error('Loading timeout after 10 seconds');
-      }
-    }, 10000);
-    return () => {
-      if (timeoutId) clearTimeout(timeoutId);
-    };
-  }, []);
+  if (error) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-red-100 font-varela">
+        <div className="bg-white p-6 rounded-xl shadow text-red-700 text-center">
+          <h2 className="text-xl font-bold mb-2">שגיאה</h2>
+          <div className="mb-2">{error}</div>
+          <button onClick={() => window.location.reload()} className="bg-red-500 text-white px-4 py-2 rounded">נסה שוב</button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-kidGradient font-varela p-4">
-      <div className="max-w-4xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
-          <button
-            onClick={() => navigate('/practice')}
-            className="flex items-center gap-2 bg-white/80 text-blue-800 px-4 py-2 rounded-lg shadow hover:scale-105 transition"
-          >
-            <ArrowLeft size={20} />
-            חזרה לתרגילים
-          </button>
-          <h1 className="text-2xl md:text-3xl font-bold text-pinkKid flex items-center gap-3">
-            <Trophy size={28} />
+      <div className="max-w-3xl mx-auto">
+        {/* כותרת */}
+        <div className="flex flex-col sm:flex-row items-center justify-between mb-6 gap-4">
+          <h1 className="text-3xl font-bold text-pinkKid flex items-center gap-3">
+            <Users size={32} />
             תחרות אונליין
           </h1>
-        </div>
-
-        {/* Info Card */}
-        <div className="bg-blue-100 rounded-xl p-4 mb-6 border-2 border-blue-300">
-          <h2 className="text-lg font-bold text-blue-900 mb-2 flex items-center gap-2">
-            <Globe size={20} />
-            משחקי מיקס תרגילים עד 15 נקודות!
-          </h2>
-          <div className="text-sm text-blue-800 space-y-1">
-            <p className="flex items-center gap-2">
-              <Shield size={16} />
-              כעת תוכל לשחק עם משתמשים מכל רחבי האתר
-            </p>
-            <p className="flex items-center gap-2">
-              <Clock size={16} />
-              המנצח הראשון ל-15 נקודות זוכה במשחק חינם!
-            </p>
+          <div className="text-blue-900 text-lg font-bold bg-white/80 rounded-full px-4 py-2 shadow">
+            {users.length} משתמשים מחוברים
           </div>
         </div>
 
-        {/* Search and Filter */}
-        <div className="bg-white/90 rounded-xl p-4 mb-6 shadow-lg">
-          <div className="flex flex-col sm:flex-row gap-4">
-            <div className="flex-1 relative">
-              <Search size={20} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
-              <input
-                type="text"
-                placeholder="חפש משתמש..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pr-10 pl-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-              />
-            </div>
-            <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={filterSameEmail}
-                onChange={(e) => setFilterSameEmail(e.target.checked)}
-                className="rounded"
-              />
-              <Filter size={16} />
-              רק מהחשבון שלי
-            </label>
+        {/* הודעות */}
+        {infoMsg && (
+          <div className="mb-4 text-center text-blue-800 bg-white/80 rounded-lg px-4 py-2 animate-pulse font-bold">
+            {infoMsg}
           </div>
+        )}
+
+        {/* חיפוש */}
+        <div className="mb-6 flex items-center gap-2 bg-white/90 rounded-xl px-4 py-2 shadow">
+          <Search size={20} className="text-gray-400" />
+          <input
+            type="text"
+            placeholder="חפש משתמש..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="flex-1 bg-transparent outline-none px-2 py-2 text-blue-900"
+          />
         </div>
 
-        {/* Online Users */}
-        <div className="bg-white/90 rounded-xl p-4 md:p-6 shadow-lg">
-          <h2 className="text-xl font-bold text-blue-900 mb-4 flex items-center gap-2">
-            <Users size={24} />
-            משתמשים ({filteredUsers.length})
-          </h2>
-          <div className="text-sm text-gray-500 mb-2">נמצאו {users.length} משתמשים (לפני סינון)</div>
-
-          {filteredUsers.length === 0 ? (
-            <div className="text-center py-8 text-gray-600">
+        {/* רשימת משתמשים */}
+        <div className="grid gap-4 md:grid-cols-2">
+          {users.filter((user) => user.name?.toLowerCase().includes(search.toLowerCase())).length === 0 ? (
+            <div className="col-span-2 text-center text-gray-500 py-8">
               <Users size={48} className="mx-auto mb-4 opacity-50" />
-              <p className="text-lg">לא נמצאו משתמשים מתאימים</p>
-              <p className="text-sm">נסה לשנות את הסינון או החיפוש</p>
+              <div className="text-lg">לא נמצאו משתמשים מתאימים</div>
             </div>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
-              {filteredUsers.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex flex-col sm:flex-row sm:items-center justify-between bg-gradient-to-r from-blue-100 to-purple-100 p-4 rounded-lg gap-3"
-                >
-                  <div className="flex items-center gap-3">
-                    {renderAvatarByType(user.avatar_character as AvatarCharacter, 'sm')}
-                    <div>
-                      <p className="font-bold text-blue-900">{user.name}</p>
-                    </div>
-                  </div>
-                  {/* כפתור דמו בלבד */}
-                  <button
-                    disabled
-                    className="bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg font-bold opacity-50 cursor-not-allowed w-full sm:w-auto"
-                  >
-                    הזמן לתחרות
-                  </button>
+            users.filter((user) => user.name?.toLowerCase().includes(search.toLowerCase())).map((user) => (
+              <div
+                key={user.id}
+                className="flex items-center gap-4 bg-gradient-to-r from-blue-100 to-purple-100 p-4 rounded-xl shadow hover:scale-[1.02] transition-transform"
+              >
+                {renderAvatarByType(user.avatar_character as AvatarCharacter, 'md')}
+                <div className="flex-1">
+                  <div className="font-bold text-blue-900 text-lg">{user.name}</div>
                 </div>
-              ))}
-            </div>
+                <button
+                  onClick={() => handleSendInvitation(user.id)}
+                  disabled={sending === user.id || myInvitations.some(inv => inv.to_profile_id === user.id && inv.status === 'pending')}
+                  className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg font-bold shadow hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Send size={18} />
+                  {sending === user.id ? 'נשלח...' : myInvitations.some(inv => inv.to_profile_id === user.id && inv.status === 'pending') ? 'הוזמן' : 'שלח הזמנה'}
+                </button>
+              </div>
+            ))
           )}
         </div>
       </div>
+
+      {/* Popup להזמנה נכנסת */}
+      {inviteModal && inviteModal.from_profile && (
+        <div className="fixed inset-0 flex items-center justify-center bg-black/40 z-50">
+          <div className="bg-white rounded-xl p-6 shadow-xl text-center max-w-xs w-full">
+            <div className="mb-4 flex flex-col items-center gap-2">
+              {renderAvatarByType(inviteModal.from_profile.avatar_character as AvatarCharacter, 'md')}
+              <div className="font-bold text-blue-900 text-lg">{inviteModal.from_profile.name}</div>
+              <div className="text-blue-700">הזמין אותך למשחק אונליין</div>
+            </div>
+            <div className="flex gap-4 mt-4 justify-center">
+              <button
+                onClick={handleAccept}
+                className="bg-green-500 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-600 transition"
+              >
+                אישור
+              </button>
+              <button
+                onClick={handleReject}
+                className="bg-gray-300 text-gray-800 px-4 py-2 rounded-lg font-bold hover:bg-gray-400 transition"
+              >
+                דחייה
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
 
 export default OnlineCompetition;
+
