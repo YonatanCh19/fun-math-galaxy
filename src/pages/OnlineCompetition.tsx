@@ -24,6 +24,10 @@ const EmptyState = ({ icon, title, message }) => (
   </div>
 );
 
+// Type guard לבדוק אם res הוא אובייקט עם status === 'error'
+function isErrorRes(val: unknown): val is { status: string } {
+  return typeof val === 'object' && val !== null && 'status' in val && (val as any).status === 'error';
+}
 
 const OnlineCompetition = () => {
   const auth = useAuth();
@@ -107,7 +111,7 @@ const OnlineCompetition = () => {
         .single();
       if (inviteError) throw inviteError;
       // שליחת התראה בזמן אמת דרך Realtime
-      const { error: realtimeError } = await supabase.channel('notifications')
+      const res = await supabase.channel('notifications')
         .send({
           type: 'broadcast',
           event: 'invite',
@@ -117,11 +121,16 @@ const OnlineCompetition = () => {
             invite_id: invite.id,
           },
         });
-      if (realtimeError) throw realtimeError;
+      if (res == null) {
+        throw new Error('שגיאה בשליחת הודעת Realtime');
+      }
+      if (typeof res === 'string' && res === 'error') {
+        throw new Error('שגיאה בשליחת הודעת Realtime');
+      }
+      if (isErrorRes(res)) {
+        throw new Error('שגיאה בשליחת הודעת Realtime');
+      }
       setInfoMsg('ההזמנה נשלחה בהצלחה!');
-    } catch (error) {
-      console.error('שגיאה בשליחת ההזמנה:', error);
-      setError('שליחת ההזמנה נכשלה. נסה שוב.');
     } finally {
       setSendingInvite(null);
     }
