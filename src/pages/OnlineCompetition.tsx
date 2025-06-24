@@ -98,39 +98,48 @@ const OnlineCompetition = () => {
   // שליחת הזמנה
   const handleSendInvite = async (targetUserId: string) => {
     setSendingInvite(targetUserId);
+    setError(null);
     try {
-      // יצירת הזמנה חדשה ב-Supabase
+      // 1. בדיקת תקינות משתמש
+      if (!user || !user.id) {
+        throw new Error('משתמש לא זמין');
+      }
+      // 2. יצירת הזמנה ב-Supabase
       const { data: invite, error: inviteError } = await supabase
         .from('game_invites')
         .insert({
           from_user: user.id,
           to_user: targetUserId,
-          status: 'pending',
+          status: 'pending'
         })
         .select()
         .single();
       if (inviteError) throw inviteError;
-      // שליחת התראה בזמן אמת דרך Realtime
-      const res = await supabase.channel('notifications')
-        .send({
-          type: 'broadcast',
-          event: 'invite',
-          payload: {
-            from: user.id,
-            to: targetUserId,
-            invite_id: invite.id,
-          },
-        });
-      if (res == null) {
-        throw new Error('שגיאה בשליחת הודעת Realtime');
+      console.log('הזמנה נוצרה:', invite.id);
+      // 3. שליחת התראה בזמן אמת
+      const channel = supabase.channel(`invite_${targetUserId}`);
+      const broadcastRes = await channel.send({
+        type: 'broadcast',
+        event: 'new_invite',
+        payload: {
+          from_user: user.id,
+          to_user: targetUserId,
+          invite_id: invite.id
+        }
+      });
+      // 4. בדיקת תקינות השליחה
+      if (broadcastRes === 'error' || (broadcastRes && (broadcastRes as any).status === 'error')) {
+        throw new Error('שליחת ההתראה נכשלה');
       }
-      if (typeof res === 'string' && res === 'error') {
-        throw new Error('שגיאה בשליחת הודעת Realtime');
-      }
-      if (isErrorRes(res)) {
-        throw new Error('שגיאה בשליחת הודעת Realtime');
-      }
-      setInfoMsg('ההזמנה נשלחה בהצלחה!');
+      // 5. עדכון UI
+      setInfoMsg(`הזמנה נשלחה ל${users.find(u => u.id === targetUserId)?.name || 'שחקן'}`);
+    } catch (error: any) {
+      console.error('פרטי שגיאה:', {
+        userId: user?.id,
+        targetUserId,
+        error
+      });
+      setError('שליחת ההזמנה נכשלה: ' + error.message);
     } finally {
       setSendingInvite(null);
     }
@@ -138,19 +147,21 @@ const OnlineCompetition = () => {
 
   // האזנה להזמנות נכנסות
   useEffect(() => {
-    if (!user) return;
-    const inviteChannel = supabase.channel(`invites_${user.id}`)
-      .on('broadcast', { event: 'invite' }, (payload) => {
+    if (!user?.id) return;
+    // האזנה להזמנות ספציפיות למשתמש הנוכחי
+    const channel = supabase.channel(`invite_${user.id}`)
+      .on('broadcast', { event: 'new_invite' }, (payload) => {
+        console.log('התקבלה הזמנה חדשה:', payload);
         setIncomingInvite({
           id: payload.payload.invite_id,
-          from: payload.payload.from,
+          from: payload.payload.from_user
         });
       })
       .subscribe();
     return () => {
-      inviteChannel.unsubscribe();
+      channel.unsubscribe();
     };
-  }, [user]);
+  }, [user?.id]);
 
   // טיפול בהזמנה נכנסת
   const handleInviteResponse = async (accepted: boolean) => {
@@ -252,11 +263,17 @@ const OnlineCompetition = () => {
                     <div className="font-bold text-blue-900 text-lg">{u.name}</div>
                   </div>
                   <button
-                    onClick={() => handleSendInvite(u.user_id)}
+                    onClick={() => handleSendInvite(u.id)}
                     disabled={!!sendingInvite}
-                    className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg font-bold shadow hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    className={`bg-blue-500 text-white px-4 py-2 rounded ${sendingInvite === u.id ? 'opacity-50 cursor-not-allowed' : 'hover:bg-blue-600'}`}
                   >
-                    {sendingInvite === u.user_id ? <Spinner size="sm" /> : <><Send size={18} />שלח הזמנה</>}
+                    {sendingInvite === u.id ? (
+                      <span className="flex items-center">
+                        <span className="mr-2"><Spinner size="sm" /></span> טוען...
+                      </span>
+                    ) : (
+                      'שלח הזמנה'
+                    )}
                   </button>
                 </div>
               ))
