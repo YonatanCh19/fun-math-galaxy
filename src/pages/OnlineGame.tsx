@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
@@ -68,9 +67,9 @@ export default function OnlineGame() {
         .from('online_competitions')
         .select('*')
         .eq('id', competitionId)
-        .single();
+        .maybeSingle();
 
-      if (error) {
+      if (error && error.code !== 'PGRST116') {
         console.error('Error fetching competition:', error);
         toast.error('שגיאה בטעינת התחרות');
         navigate('/online-competition');
