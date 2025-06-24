@@ -34,10 +34,9 @@ const OnlineCompetition = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
-  const [sending, setSending] = useState<string | null>(null);
-  const [myInvitations, setMyInvitations] = useState<any[]>([]);
-  const [inviteModal, setInviteModal] = useState<any>(null);
+  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
   const [infoMsg, setInfoMsg] = useState('');
+  const [incomingInvite, setIncomingInvite] = useState<{ id: string; from: string } | null>(null);
   const navigate = (window as any).navigate || ((path: string) => { window.location.href = path; });
 
   // הפניה אוטומטית אם אין פרופיל
@@ -74,7 +73,7 @@ const OnlineCompetition = () => {
       } else {
         const { data: onlineProfiles, error: profilesError } = await supabase
           .from('profiles')
-          .select('id, name, avatar_character')
+          .select('id, name, avatar_character, user_id')
           .in('id', onlineProfileIds);
         if (profilesError) {
           throw new Error('שגיאה בטעינת פרופילים: ' + profilesError.message);
@@ -92,6 +91,86 @@ const OnlineCompetition = () => {
     loadData();
   }, [loadData]);
 
+  // שליחת הזמנה
+  const handleSendInvite = async (targetUserId: string) => {
+    setSendingInvite(targetUserId);
+    try {
+      // יצירת הזמנה חדשה ב-Supabase
+      const { data: invite, error: inviteError } = await supabase
+        .from('game_invites')
+        .insert({
+          from_user: user.id,
+          to_user: targetUserId,
+          status: 'pending',
+        })
+        .select()
+        .single();
+      if (inviteError) throw inviteError;
+      // שליחת התראה בזמן אמת דרך Realtime
+      const { error: realtimeError } = await supabase.channel('notifications')
+        .send({
+          type: 'broadcast',
+          event: 'invite',
+          payload: {
+            from: user.id,
+            to: targetUserId,
+            invite_id: invite.id,
+          },
+        });
+      if (realtimeError) throw realtimeError;
+      setInfoMsg('ההזמנה נשלחה בהצלחה!');
+    } catch (error) {
+      console.error('שגיאה בשליחת ההזמנה:', error);
+      setError('שליחת ההזמנה נכשלה. נסה שוב.');
+    } finally {
+      setSendingInvite(null);
+    }
+  };
+
+  // האזנה להזמנות נכנסות
+  useEffect(() => {
+    if (!user) return;
+    const inviteChannel = supabase.channel(`invites_${user.id}`)
+      .on('broadcast', { event: 'invite' }, (payload) => {
+        setIncomingInvite({
+          id: payload.payload.invite_id,
+          from: payload.payload.from,
+        });
+      })
+      .subscribe();
+    return () => {
+      inviteChannel.unsubscribe();
+    };
+  }, [user]);
+
+  // טיפול בהזמנה נכנסת
+  const handleInviteResponse = async (accepted: boolean) => {
+    if (!incomingInvite) return;
+    try {
+      // עדכון סטטוס ההזמנה
+      const { error } = await supabase
+        .from('game_invites')
+        .update({ status: accepted ? 'accepted' : 'declined' })
+        .eq('id', incomingInvite.id);
+      if (error) throw error;
+      if (accepted) {
+        // יצירת חדר משחק
+        const roomId = Math.random().toString(36).substring(2, 12); // nanoid חלופי
+        // הוספת שני השחקנים לחדר
+        await supabase.from('game_rooms').insert([
+          { room_id: roomId, user_id: user.id },
+          { room_id: roomId, user_id: incomingInvite.from },
+        ]);
+        // נווט לחדר המשחק
+        window.location.href = `/game/${roomId}`;
+      }
+    } catch (error) {
+      console.error('שגיאה בתגובה להזמנה:', error);
+    } finally {
+      setIncomingInvite(null);
+    }
+  };
+
   if (loadingAuth || !user) {
     return (
       <div className="flex items-center justify-center min-h-[40vh]">
@@ -99,7 +178,6 @@ const OnlineCompetition = () => {
       </div>
     );
   }
-  // אם אין selectedProfile – לא מציגים כלום (הפניה תתבצע אוטומטית)
   if (!selectedProfile) {
     return null;
   }
@@ -119,9 +197,6 @@ const OnlineCompetition = () => {
   }
   const filteredUsers = users.filter((u) => u.name?.toLowerCase().includes(search.toLowerCase()));
 
-  // כאן ממשיך כל הקוד של ה-UI (חלק ה-return) מהקובץ המקורי שלך
-  // ... מומלץ להעתיק את כל ה-return מהקוד ששלחת:
-
   return (
     <div className="online-competition min-h-screen bg-kidGradient font-varela p-4">
       <div className="max-w-3xl mx-auto">
@@ -135,7 +210,6 @@ const OnlineCompetition = () => {
             {users.length} משתמשים מחוברים
           </div>
         </div>
-
         {/* חיפוש */}
         <div className="mb-6 flex items-center gap-2 bg-white/90 rounded-xl px-4 py-2 shadow">
           <Search size={20} className="text-gray-400" />
@@ -147,7 +221,6 @@ const OnlineCompetition = () => {
             className="flex-1 bg-transparent outline-none px-2 py-2 text-blue-900"
           />
         </div>
-
         {/* רשימת משתמשים או הודעת "אין משתמשים" */}
         {users.length === 0 ? (
           <div className="py-12">
@@ -170,11 +243,11 @@ const OnlineCompetition = () => {
                     <div className="font-bold text-blue-900 text-lg">{u.name}</div>
                   </div>
                   <button
-                    // disabled={...} // הוסף כאן את הלוגיקה של disabling
+                    onClick={() => handleSendInvite(u.user_id)}
+                    disabled={!!sendingInvite}
                     className="flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white px-4 py-2 rounded-lg font-bold shadow hover:scale-105 transition disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    <Send size={18} />
-                    שלח הזמנה
+                    {sendingInvite === u.user_id ? <Spinner size="sm" /> : <><Send size={18} />שלח הזמנה</>}
                   </button>
                 </div>
               ))
@@ -187,6 +260,19 @@ const OnlineCompetition = () => {
                   />
               </div>
             )}
+          </div>
+        )}
+        {/* פופ-אפ להזמנה נכנסת */}
+        {incomingInvite && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="bg-white p-6 rounded-xl max-w-md">
+              <h2 className="text-xl font-bold mb-4">הזמנה למשחק</h2>
+              <p>שחקן מזמין אותך למשחק!</p>
+              <div className="flex gap-4 mt-6">
+                <button onClick={() => handleInviteResponse(false)} className="flex-1 bg-gray-200 py-2 rounded">דחה</button>
+                <button onClick={() => handleInviteResponse(true)} className="flex-1 bg-green-500 text-white py-2 rounded">קבל</button>
+              </div>
+            </div>
           </div>
         )}
       </div>

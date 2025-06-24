@@ -208,6 +208,48 @@ export type Database = {
           },
         ]
       }
+      game_invites: {
+        Row: {
+          id: string;
+          from_user: string;
+          to_user: string;
+          status: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          from_user: string;
+          to_user: string;
+          status: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          from_user?: string;
+          to_user?: string;
+          status?: string;
+          created_at?: string;
+        };
+        Relationships: [];
+      },
+      game_rooms: {
+        Row: {
+          id: number;
+          room_id: string;
+          user_id: string;
+        };
+        Insert: {
+          id?: number;
+          room_id: string;
+          user_id: string;
+        };
+        Update: {
+          id?: number;
+          room_id?: string;
+          user_id?: string;
+        };
+        Relationships: [];
+      }
     }
     Views: {
       [_ in never]: never
