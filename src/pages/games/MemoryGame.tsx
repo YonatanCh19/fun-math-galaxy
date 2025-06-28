@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import MemoryCard from '@/components/MemoryCard';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from '@/hooks/useTranslation';
+import { Button } from '@/components/ui/button';
+import { ArrowLeft } from 'lucide-react';
 
 const EMOJIS = ['🐧', '🐙', '🦋', '🐞', '🐠', '🦕', '🦒', '🦓'];
 
@@ -89,7 +91,7 @@ export default function MemoryGame() {
 
   useEffect(() => {
     if (gameOver) {
-      redirectTimeoutRef.current = setTimeout(() => nav('/practice'), 2500);
+      redirectTimeoutRef.current = setTimeout(() => nav('/practice'), 3000);
     }
 
     return () => {
@@ -121,6 +123,18 @@ export default function MemoryGame() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-kidGradient font-varela p-4 sm:p-6 text-center">
+      {/* כפתור חזרה */}
+      <div className="w-full max-w-4xl flex justify-start mb-4">
+        <Button
+          onClick={() => nav("/practice")}
+          variant="ghost"
+          className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+        >
+          <ArrowLeft size={20} />
+          חזרה לתרגול
+        </Button>
+      </div>
+
       <h1 className="text-4xl sm:text-5xl font-extrabold text-blueKid mb-4">{t('memory_game')}</h1>
       
       <div className="grid grid-cols-4 gap-2 sm:gap-4 mb-6 [perspective:1000px]">
@@ -136,7 +150,7 @@ export default function MemoryGame() {
           <div className="bg-white rounded-2xl p-8 shadow-2xl text-center">
             <h2 className="text-3xl sm:text-4xl font-bold text-greenKid mb-4">{t('game_over_win_title')}</h2>
             <p className="text-lg sm:text-xl text-blue-900 mb-6">{t('game_over_win_desc', { moves })}</p>
-            <p className="text-md sm:text-lg text-blue-800 animate-pulse">{t('redirecting_message')}</p>
+            <p className="text-md sm:text-lg text-blue-800 animate-pulse">חוזר לתרגול בעוד 3 שניות...</p>
           </div>
         </div>
       )}

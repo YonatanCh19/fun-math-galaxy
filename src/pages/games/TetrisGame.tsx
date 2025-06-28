@@ -1,9 +1,9 @@
-
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import GameControls from '@/components/GameControls';
+import { ArrowLeft } from 'lucide-react';
 
 // --- Game Constants and Helpers ---
 
@@ -77,6 +77,7 @@ const useInterval = (callback: () => void, delay: number | null) => {
 export default function TetrisGame() {
   const isMobile = useIsMobile();
   const CELL_SIZE = isMobile ? 20 : 25;
+  const nav = useNavigate();
 
   const [isGameRunning, setIsGameRunning] = useState(false);
   const [gameOver, setGameOver] = useState(false);
@@ -92,7 +93,6 @@ export default function TetrisGame() {
   const [rows, setRows] = useState(0);
   const [level, setLevel] = useState(0);
   const [dropTime, setDropTime] = useState<number | null>(null);
-  const nav = useNavigate();
 
   const checkCollision = useCallback((p: typeof player, b: string[][], { x: moveX, y: moveY }: { x: number, y: number }): boolean => {
     for (let y = 0; y < p.tetromino.shape.length; y += 1) {
@@ -142,7 +142,7 @@ export default function TetrisGame() {
 
   useEffect(() => {
     if (gameOver) {
-      setTimeout(() => nav('/practice'), 2500);
+      setTimeout(() => nav('/practice'), 3000);
     }
   }, [gameOver, nav]);
   
@@ -277,6 +277,18 @@ export default function TetrisGame() {
   if (!isGameRunning) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-kidGradient font-varela p-6 text-center">
+        {/* כפתור חזרה */}
+        <div className="w-full max-w-4xl flex justify-start mb-4">
+          <Button
+            onClick={() => nav("/practice")}
+            variant="ghost"
+            className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+          >
+            <ArrowLeft size={20} />
+            חזרה לתרגול
+          </Button>
+        </div>
+
         <h1 className="text-5xl font-extrabold text-blueKid mb-4">טטריס 🧱</h1>
         <p className="text-2xl text-pinkKid mb-8 max-w-md">
             סדרו את הלבנים הנופלות כדי ליצור שורות שלמות. השתמשו בחצים כדי לזוז ולסובב.
@@ -290,6 +302,18 @@ export default function TetrisGame() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-kidGradient font-varela p-4 sm:p-6 text-center text-white">
+      {/* כפתור חזרה */}
+      <div className="w-full max-w-4xl flex justify-start mb-4">
+        <Button
+          onClick={() => nav("/practice")}
+          variant="ghost"
+          className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+        >
+          <ArrowLeft size={20} />
+          חזרה לתרגול
+        </Button>
+      </div>
+
       <h1 className="text-4xl sm:text-5xl font-extrabold text-blueKid mb-4">טטריס</h1>
       <div className="flex flex-col md:flex-row gap-4 md:gap-8 items-center">
         <div 
@@ -320,7 +344,7 @@ export default function TetrisGame() {
             <div className="absolute inset-0 bg-black/70 text-white rounded-md flex flex-col items-center justify-center z-10 animate-fade-in">
               <h2 className="text-4xl font-bold text-red-500 mb-2">נפסלת!</h2>
               <p className="text-xl mb-4">ניקוד סופי: {score}</p>
-              <p className="text-lg text-gray-200 animate-pulse">מיד תועברו חזרה לתרגולים...</p>
+              <p className="text-lg text-gray-200 animate-pulse">חוזר לתרגול בעוד 3 שניות...</p>
             </div>
           )}
         </div>

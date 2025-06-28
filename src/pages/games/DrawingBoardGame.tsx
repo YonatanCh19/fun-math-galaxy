@@ -2,6 +2,7 @@ import React, { useRef, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { ArrowLeft } from 'lucide-react';
 
 const GAME_DURATION = 120; // 2 minutes
 const COLORS = [
@@ -128,6 +129,18 @@ export default function DrawingBoardGame() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-start bg-kidGradient font-varela p-4">
+      {/* כפתור חזרה */}
+      <div className="w-full max-w-4xl flex justify-start mb-4">
+        <Button
+          onClick={() => nav("/practice")}
+          variant="ghost"
+          className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+        >
+          <ArrowLeft size={20} />
+          חזרה לתרגול
+        </Button>
+      </div>
+
       <h1 className="text-4xl font-bold mb-4 text-blueKid drop-shadow">לוח ציור</h1>
       <div className="w-full flex justify-between items-center text-xl font-bold mb-4 z-10 max-w-4xl">
         <div className="text-pinkKid bg-white/70 px-4 py-2 rounded-lg shadow-md">ציירו בחופשיות!</div>

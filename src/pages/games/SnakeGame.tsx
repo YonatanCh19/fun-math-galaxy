@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import GameControls from '@/components/GameControls';
+import { ArrowLeft } from 'lucide-react';
 
 const GRID_SIZE = 20;
 const INITIAL_GAME_SPEED_MS = 200;
@@ -24,6 +25,7 @@ export default function SnakeGame() {
   
   const isMobile = useIsMobile();
   const CELL_SIZE = isMobile ? 16 : 20;
+  const nav = useNavigate();
 
   const [snake, setSnake] = useState(getInitialSnake());
   const [food, setFood] = useState(() => getRandomCoord(getInitialSnake()));
@@ -34,7 +36,6 @@ export default function SnakeGame() {
   const [speed, setSpeed] = useState(INITIAL_GAME_SPEED_MS);
   const gameIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const redirectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const nav = useNavigate();
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     e.preventDefault();
@@ -79,7 +80,7 @@ export default function SnakeGame() {
 
   useEffect(() => {
     if (isGameOver) {
-      redirectTimeoutRef.current = setTimeout(() => nav('/practice'), 2500);
+      redirectTimeoutRef.current = setTimeout(() => nav('/practice'), 3000);
     }
     
     return () => {
@@ -146,6 +147,18 @@ export default function SnakeGame() {
   if (!isGameRunning) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-kidGradient font-varela p-6 text-center">
+        {/* כפתור חזרה */}
+        <div className="w-full max-w-4xl flex justify-start mb-4">
+          <Button
+            onClick={() => nav("/practice")}
+            variant="ghost"
+            className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+          >
+            <ArrowLeft size={20} />
+            חזרה לתרגול
+          </Button>
+        </div>
+
         <h1 className="text-5xl font-extrabold text-blueKid mb-4">סנייק 🐍</h1>
         <p className="text-2xl text-pinkKid mb-8 max-w-md">
           השתמשו במקשי החצים כדי להזיז את הנחש, לאכול את הפירות ולהיזהר לא להתנגש בקירות או בעצמכם!
@@ -159,6 +172,18 @@ export default function SnakeGame() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-kidGradient font-varela p-4 sm:p-6 text-center">
+      {/* כפתור חזרה */}
+      <div className="w-full max-w-4xl flex justify-start mb-4">
+        <Button
+          onClick={() => nav("/practice")}
+          variant="ghost"
+          className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+        >
+          <ArrowLeft size={20} />
+          חזרה לתרגול
+        </Button>
+      </div>
+
       <h1 className="text-4xl sm:text-5xl font-extrabold text-blueKid mb-2">סנייק</h1>
       <div className="text-xl sm:text-2xl text-pinkKid font-bold mb-4">ניקוד: {score}</div>
       
@@ -179,7 +204,7 @@ export default function SnakeGame() {
           >
             <h2 className="text-4xl font-bold text-red-500 mb-2">אופס! נפסלת</h2>
             <p className="text-xl mb-4">הניקוד שלך: {score}</p>
-            <p className="text-lg text-gray-200 animate-pulse">מיד תועברו חזרה לתרגולים...</p>
+            <p className="text-lg text-gray-200 animate-pulse">חוזר לתרגול בעוד 3 שניות...</p>
           </div>
         )}
         {snake.map(([y, x], index) => (

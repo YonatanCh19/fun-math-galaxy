@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { useAuth } from "@/hooks/useAuth";
 import { useNavigate } from "react-router-dom";
 import { useTranslation } from "@/hooks/useTranslation";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft } from "lucide-react";
 
 export default function Games() {
   const { user, loading } = useAuth();
@@ -23,6 +25,29 @@ export default function Games() {
     }
   }, [user, loading, nav]);
 
+  // פונקציה שמטפלת בסיום משחק - חזרה אוטומטית לתרגול
+  useEffect(() => {
+    const handleGameEnd = () => {
+      // האזנה לאירועי סיום משחק
+      const handleBeforeUnload = () => {
+        // אם המשתמש עוזב את דף המשחקים, נחזיר אותו לתרגול
+        setTimeout(() => {
+          if (window.location.pathname.includes('/games/')) {
+            nav('/practice');
+          }
+        }, 100);
+      };
+
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      
+      return () => {
+        window.removeEventListener('beforeunload', handleBeforeUnload);
+      };
+    };
+
+    return handleGameEnd();
+  }, [nav]);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-kidGradient font-varela text-2xl text-pinkKid">
@@ -37,7 +62,30 @@ export default function Games() {
 
   return (
     <div className="min-h-screen bg-kidGradient py-12 font-varela flex flex-col items-center px-4">
+      {/* כפתור חזרה */}
+      <div className="w-full max-w-4xl flex justify-start mb-4">
+        <Button
+          onClick={() => nav("/practice")}
+          variant="ghost"
+          className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+        >
+          <ArrowLeft size={20} />
+          חזרה לתרגול
+        </Button>
+      </div>
+
       <h1 className="text-3xl sm:text-4xl font-bold mb-7 text-blueKid drop-shadow text-center">{t('games_page_title')}</h1>
+      
+      {/* הודעת עידוד */}
+      <div className="bg-gradient-to-r from-yellow-100 to-orange-100 border-4 border-yellow-400 rounded-3xl p-6 mb-8 max-w-2xl text-center shadow-xl">
+        <h2 className="text-xl sm:text-2xl font-bold text-orange-800 mb-3">
+          🎉 כל הכבוד! הגעת לעולם המשחקים! 🎉
+        </h2>
+        <p className="text-base sm:text-lg text-orange-700">
+          בחר במשחק שהכי מעניין אותך ותהנה! אחרי המשחק תחזור אוטומטית לתרגול.
+        </p>
+      </div>
+
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-7 w-full max-w-4xl">
         {games.map((g, idx) => (
           <div key={idx} tabIndex={0}
@@ -52,11 +100,6 @@ export default function Games() {
           </div>
         ))}
       </div>
-      <button onClick={() => nav("/practice")}
-        className="mt-8 bg-pinkKid text-white px-6 py-3 text-lg sm:px-8 sm:py-4 sm:text-xl rounded-3xl drop-shadow hover:bg-pink-500 focus:outline-yellowKid font-bold"
-      >
-        {t('back_to_practice')}
-      </button>
     </div>
   );
 }

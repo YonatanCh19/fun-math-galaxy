@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback, memo } from "react";
 import { getRandomQuestion, MathType } from "@/lib/mathUtils";
 import AnimatedTrophy from "./AnimatedTrophy";
@@ -10,6 +9,7 @@ import { toast } from "sonner";
 import { getUserProgress, updateUserProgress, UserProgress } from "@/lib/progressUtils";
 import { Profile } from "@/hooks/useAuth";
 import { useTranslation } from "@/hooks/useTranslation";
+import { useNavigate } from "react-router-dom";
 
 const correctSound = new Audio("/sounds/success.mp3");
 correctSound.volume = 0.5;
@@ -58,6 +58,7 @@ const OptimizedPracticeQuestion = memo(({
 }: PracticeQuestionProps) => {
   console.log("Rendering: OptimizedPracticeQuestion");
   const { t } = useTranslation();
+  const navigate = useNavigate();
   const [progress, setProgress] = useState<UserProgress>({ correct: 0, total: 0, trophies: 0, coins: 0, free_games: 0 });
   const [q, setQ] = useState(() => getRandomQuestion(type));
   const [selectedAnswer, setSelectedAnswer] = useState<number | null>(null);
@@ -124,16 +125,28 @@ const OptimizedPracticeQuestion = memo(({
       const newTotalCorrect = progress.correct + 1;
       const newTotal = !attempted ? progress.total + 1 : progress.total;
 
+      // חישוב גביעים (כל 12 תשובות נכונות)
       const oldTrophiesFromCorrect = Math.floor(progress.correct / 12);
       const newTrophiesFromCorrect = Math.floor(newTotalCorrect / 12);
       const trophiesGained = newTrophiesFromCorrect - oldTrophiesFromCorrect;
       const newTrophies = progress.trophies + trophiesGained;
 
+      // חישוב מטבעות (כל 12 תשובות נכונות)
+      let newCoins = progress.coins;
+      if (newTotalCorrect > 0 && newTotalCorrect % 12 === 0) {
+          newCoins += 1;
+          toast.success('🪙 מזל טוב! זכית במטבע!', {
+            description: `יש לך עכשיו ${newCoins} מטבעות`,
+            icon: '🪙',
+            duration: 4000,
+          });
+      }
+
       const newProgress: UserProgress = {
           correct: newTotalCorrect,
           total: newTotal,
           trophies: newTrophies,
-          coins: progress.coins,
+          coins: newCoins,
           free_games: progress.free_games,
       };
 
@@ -141,16 +154,30 @@ const OptimizedPracticeQuestion = memo(({
       setProgress(newProgress);
       onDone({ correct: newProgress.correct, total: newProgress.total, trophies: newProgress.trophies });
       
-      // רק תשובות נכונות מוסיפות לספירה של המטבעות
+      // עדכון ספירת התשובות הנכונות בסשן
       onCorrectAnswer();
       
       setAttempted(true);
 
       const trophyWon = newProgress.trophies > progress.trophies;
 
+      // בדיקה אם הגיע ל-12 תשובות נכונות בסשן הנוכחי
+      const newSessionCount = sessionCorrectAnswers + 1;
+      
       if (trophyWon) {
         onAwardTrophy();
         setShowFullScreenTrophy(true);
+      } else if (newSessionCount >= 12 && newSessionCount % 12 === 0) {
+        // הגיע ל-12 תשובות נכונות - העבר למשחקים
+        toast.success('🎉 מדהים! פתרת 12 תרגילים נכון!', {
+          description: 'מעביר אותך לעולם המשחקים...',
+          icon: '🎮',
+          duration: 3000,
+        });
+        
+        setTimeout(() => {
+          navigate('/games');
+        }, 3000);
       } else {
         nextQuestionTimeoutRef.current = setTimeout(() => {
             loadNextQuestion();
@@ -170,14 +197,12 @@ const OptimizedPracticeQuestion = memo(({
         setAttempted(true);
       }
 
-      // תשובות שגויות לא מוסיפות לספירה של המטבעות
-
       // Auto-advance after showing wrong answer for 2 seconds
       nextQuestionTimeoutRef.current = setTimeout(() => {
         loadNextQuestion();
       }, 2000);
     }
-  }, [status, user, profile, q, progress, attempted, t, onDone, onAwardTrophy, loadNextQuestion, onCorrectAnswer]);
+  }, [status, user, profile, q, progress, attempted, t, onDone, onAwardTrophy, loadNextQuestion, onCorrectAnswer, sessionCorrectAnswers, navigate]);
 
   const handleTrophyEnd = useCallback(() => {
     setShowFullScreenTrophy(false);
@@ -204,7 +229,12 @@ const OptimizedPracticeQuestion = memo(({
           <div className="bg-pinkKid text-white px-4 sm:px-6 py-2 rounded-xl font-bold text-lg sm:text-2xl border-b-4 border-yellowKid shadow text-center">
             {t('practice_title', { type: getTypeLabel(type) })}
           </div>
-          <StatsBar correct={progress.correct} total={progress.total} trophies={progress.trophies} />
+          <StatsBar 
+            correct={progress.correct} 
+            total={progress.total} 
+            trophies={progress.trophies}
+            sessionCorrectAnswers={sessionCorrectAnswers}
+          />
         </div>
         
         <div className="w-full mt-4 sm:mt-6 flex flex-col items-center">

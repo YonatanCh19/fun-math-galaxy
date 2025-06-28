@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
+import { ArrowLeft } from 'lucide-react';
 
 const PLAYER_WIDTH = 40;
 const PLAYER_HEIGHT = 40;
@@ -125,7 +125,7 @@ export default function EndlessRunnerGame() {
     if (gameOver) {
       if(gameLoopRef.current) cancelAnimationFrame(gameLoopRef.current);
       toast.error(`הפסדת! הניקוד שלך: ${score}`, {
-        description: 'מיד תועבר לדף התרגול...',
+        description: 'חוזר לתרגול בעוד 3 שניות...',
         duration: 3000,
       });
       redirectTimeoutRef.current = setTimeout(() => nav('/practice'), 3000);
@@ -151,6 +151,18 @@ export default function EndlessRunnerGame() {
   if (!gameStarted) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-kidGradient font-varela p-6 text-center">
+        {/* כפתור חזרה */}
+        <div className="w-full max-w-4xl flex justify-start mb-4">
+          <Button
+            onClick={() => nav("/practice")}
+            variant="ghost"
+            className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+          >
+            <ArrowLeft size={20} />
+            חזרה לתרגול
+          </Button>
+        </div>
+
         <h1 className="text-6xl font-extrabold text-blueKid mb-4 drop-shadow-lg animate-bounce">🏃‍♂️ רץ אינסופי 🏃‍♀️</h1>
         <p className="text-2xl text-pinkKid mb-8 max-w-md">
           לחצו על מקש הרווח, או על המסך, כדי לקפוץ מעל המכשולים ולאסוף נקודות!
@@ -164,6 +176,18 @@ export default function EndlessRunnerGame() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-turquoiseKid/20 text-blueKid font-varela select-none">
+      {/* כפתור חזרה */}
+      <div className="w-full max-w-4xl flex justify-start mb-4 px-4">
+        <Button
+          onClick={() => nav("/practice")}
+          variant="ghost"
+          className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform flex items-center gap-2"
+        >
+          <ArrowLeft size={20} />
+          חזרה לתרגול
+        </Button>
+      </div>
+
       <div className="text-3xl font-bold mb-4 bg-white/70 text-pinkKid px-4 py-2 rounded-lg shadow-md">ניקוד: {score}</div>
       <div 
         ref={gameAreaRef}

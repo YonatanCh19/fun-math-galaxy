@@ -17,7 +17,8 @@ import { useActivityMonitor } from "@/hooks/useActivityMonitor";
 import { useMemoryMonitor } from "@/hooks/useMemoryMonitor";
 import RefreshPrompt from "@/components/RefreshPrompt";
 import { Button } from "@/components/ui/button";
-import { Gamepad2, Users } from "lucide-react";
+import { Gamepad2, Users, Target, Star, Trophy } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 
 export default function Practice() {
   console.log("Rendering: Practice");
@@ -102,6 +103,12 @@ export default function Practice() {
     );
   }
 
+  // חישוב התקדמות למשחק הבא
+  const answersToNextGame = 12;
+  const currentProgress = sessionCorrectAnswers % answersToNextGame;
+  const answersLeft = answersToNextGame - currentProgress;
+  const hasReachedGoal = sessionCorrectAnswers >= answersToNextGame;
+
   return (
     <>
       {showRefreshPrompt && (
@@ -122,6 +129,30 @@ export default function Practice() {
             onSwitchProfile={handleSwitchProfile}
             onSignOut={handleSignOut}
           />
+
+          {/* הודעה מעניינת על 12 תשובות */}
+          {!hasReachedGoal && (
+            <Card className="mb-6 bg-gradient-to-r from-purple-100 via-pink-100 to-yellow-100 border-4 border-purple-400 shadow-xl">
+              <CardContent className="p-4 sm:p-6">
+                <div className="text-center">
+                  <div className="flex items-center justify-center gap-3 mb-3">
+                    <Star className="text-yellow-500 animate-pulse" size={28} />
+                    <Target className="text-purple-600" size={28} />
+                    <Trophy className="text-yellow-600 animate-bounce" size={28} />
+                  </div>
+                  <h2 className="text-xl sm:text-2xl font-bold text-purple-800 mb-2">
+                    🎯 ענה על 12 תשובות נכונות וכנס לעולם המשחקים! 🎮
+                  </h2>
+                  <p className="text-base sm:text-lg text-purple-700 font-medium">
+                    עוד {answersLeft} תשובות נכונות ותוכל לבחור במשחק הכי כיף! 
+                  </p>
+                  <div className="mt-3 text-sm text-purple-600">
+                    ✨ כל תשובה נכונה מקרבת אותך למטרה ✨
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Online Competition Button */}
           <div className="flex justify-center mb-6">
@@ -151,14 +182,30 @@ export default function Practice() {
             onCorrectAnswer={handleCorrectAnswer}
           />
 
-          {sessionCorrectAnswers >= 12 && (
+          {/* כפתור למשחקים אם הגיע ל-12 */}
+          {hasReachedGoal && (
             <div className="mt-8 text-center">
-              <Button
-                onClick={() => navigate("/games")}
-                className="bg-greenKid text-white px-8 py-4 text-xl rounded-3xl drop-shadow hover:bg-green-500 font-bold animate-pulse"
-              >
-                🎮 בואו נשחק! 🎮
-              </Button>
+              <Card className="bg-gradient-to-r from-green-100 to-blue-100 border-4 border-green-400 shadow-xl">
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-center gap-3 mb-4">
+                    <Trophy className="text-yellow-500 animate-bounce" size={32} />
+                    <Star className="text-yellow-400 animate-pulse" size={28} />
+                    <Gamepad2 className="text-blue-500 animate-bounce" size={32} />
+                  </div>
+                  <h3 className="text-2xl font-bold text-green-800 mb-3">
+                    🎉 מדהים! הגעת ל-12 תשובות נכונות! 🎉
+                  </h3>
+                  <p className="text-lg text-green-700 mb-4">
+                    עכשיו אתה יכול להיכנס לעולם המשחקים ולבחור במשחק הכי כיף!
+                  </p>
+                  <Button
+                    onClick={() => navigate("/games")}
+                    className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white px-8 py-4 text-xl rounded-3xl drop-shadow font-bold animate-pulse shadow-xl"
+                  >
+                    🎮 בואו נשחק! 🎮
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
           )}
         </div>
