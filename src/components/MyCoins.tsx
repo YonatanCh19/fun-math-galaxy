@@ -75,6 +75,9 @@ export default function MyCoins({ isOpen, onClose }: MyCoinsProps) {
     return (
       <Dialog open={isOpen} onOpenChange={onClose}>
         <DialogContent dir="rtl" className="bg-kidGradient border-4 border-pinkKid rounded-2xl max-w-md">
+          <DialogHeader>
+            <DialogTitle className="sr-only">טוען נתונים</DialogTitle>
+          </DialogHeader>
           <div className="flex items-center justify-center py-8">
             <LoadingSpinner message="טוען נתונים..." size="lg" />
           </div>
