@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { tips } from '@/lib/tips';
 
 export default function DailyTip({ onClose }: { onClose: () => void }) {
@@ -6,19 +6,53 @@ export default function DailyTip({ onClose }: { onClose: () => void }) {
   
   const [countdown, setCountdown] = useState(10);
   const [randomTip] = useState(() => tips[Math.floor(Math.random() * tips.length)]);
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const hasClosedRef = useRef(false);
 
   useEffect(() => {
+    // אם כבר נסגר, לא להתחיל טיימר חדש
+    if (hasClosedRef.current) return;
+
+    // ניקוי טיימר קיים אם יש
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+    }
+
+    // אם הספירה הגיעה לאפס, סגור את הטיפ
     if (countdown <= 0) {
+      hasClosedRef.current = true;
       onClose();
       return;
     }
 
-    const timer = setTimeout(() => {
-      setCountdown(countdown - 1);
+    // הגדרת טיימר חדש
+    timerRef.current = setTimeout(() => {
+      setCountdown(prev => prev - 1);
     }, 1000);
 
-    return () => clearTimeout(timer);
+    // ניקוי הטיימר כשהקומפוננט נהרס
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
   }, [countdown, onClose]);
+
+  // ניקוי כשהקומפוננט נהרס
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
+
+  // אם כבר נסגר, לא להציג כלום
+  if (hasClosedRef.current) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center font-varela p-4 animate-scale-in">
