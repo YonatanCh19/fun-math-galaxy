@@ -14,6 +14,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useState, useEffect } from 'react';
 import { toast } from 'sonner';
 import LoadingSpinner from './LoadingSpinner';
+import { useNavigate } from 'react-router-dom';
 
 interface MyCoinsProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export default function MyCoins({ isOpen, onClose }: MyCoinsProps) {
   
   const { t } = useTranslation();
   const { selectedProfile } = useAuth();
+  const navigate = useNavigate();
   const [progress, setProgress] = useState<UserProgress | null>(null);
   const [loading, setLoading] = useState(true);
   const [usingCoins, setUsingCoins] = useState(false);
@@ -57,15 +59,54 @@ export default function MyCoins({ isOpen, onClose }: MyCoinsProps) {
     try {
       const success = await useFreeGame(selectedProfile.id);
       if (success) {
-        toast.success('השתמשת במשחק חינם! בהצלחה!');
-        await loadProgress(); // Refresh the data
+        toast.success('השתמשת במשחק חינם! בהצלחה!', {
+          description: 'מעביר אותך לדף המשחקים...',
+          duration: 3000,
+        });
+        
+        // Close the dialog first
         onClose();
+        
+        // Navigate to games page after a short delay
+        setTimeout(() => {
+          navigate('/games');
+        }, 500);
+        
+        await loadProgress(); // Refresh the data
       } else {
         toast.error('אין לך משחקים חינם זמינים');
       }
     } catch (error) {
       console.error('Error using free game:', error);
       toast.error('שגיאה בשימוש במשחק חינם');
+    } finally {
+      setUsingCoins(false);
+    }
+  };
+
+  const handleUseCoins = async () => {
+    if (!selectedProfile || !progress || progress.coins < 3) return;
+
+    setUsingCoins(true);
+    try {
+      // Here you would implement the logic to use 3 coins for a free game
+      // For now, we'll just navigate to games page
+      toast.success('השתמשת ב-3 מטבעות! בהצלחה במשחק!', {
+        description: 'מעביר אותך לדף המשחקים...',
+        duration: 3000,
+      });
+      
+      // Close the dialog first
+      onClose();
+      
+      // Navigate to games page after a short delay
+      setTimeout(() => {
+        navigate('/games');
+      }, 500);
+      
+    } catch (error) {
+      console.error('Error using coins:', error);
+      toast.error('שגיאה בשימוש במטבעות');
     } finally {
       setUsingCoins(false);
     }
@@ -103,9 +144,31 @@ export default function MyCoins({ isOpen, onClose }: MyCoinsProps) {
               <Coins className="text-yellow-500" size={48} />
               <span className="text-4xl font-bold text-yellow-600">{progress?.coins || 0}</span>
             </div>
-            <p className="text-lg font-semibold text-blue-800">
+            <p className="text-lg font-semibold text-blue-800 mb-4">
               {t('my_coins_description', { count: progress?.coins || 0 })}
             </p>
+            
+            {/* Use Coins Button */}
+            {progress && progress.coins >= 3 ? (
+              <Button
+                onClick={handleUseCoins}
+                disabled={usingCoins}
+                className="bg-yellow-500 hover:bg-yellow-600 text-white font-bold px-6 py-3 rounded-lg w-full mb-2"
+              >
+                {usingCoins ? (
+                  <LoadingSpinner size="sm" />
+                ) : (
+                  <>
+                    <Gamepad2 className="ml-2" size={20} />
+                    {t('play_for_free_button', { coins: progress.coins })}
+                  </>
+                )}
+              </Button>
+            ) : (
+              <div className="bg-gray-100 rounded-lg p-3 text-gray-600 text-sm">
+                צריך 3 מטבעות למשחק חינם
+              </div>
+            )}
           </div>
 
           {/* Free Games Display */}
