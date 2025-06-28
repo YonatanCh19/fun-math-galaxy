@@ -33,10 +33,12 @@ export function useOnlinePresence(currentProfile: Profile | null) {
           last_seen: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
+      
+      console.log(`✅ Presence updated: ${currentProfile.name} is ${isOnline ? 'online' : 'offline'}`);
     } catch (error) {
       console.error('Error updating presence:', error);
     }
-  }, [currentProfile?.id]);
+  }, [currentProfile?.id, currentProfile?.name]);
 
   const fetchOnlineUsers = useCallback(async () => {
     if (!currentProfile?.id) {
@@ -48,11 +50,14 @@ export function useOnlinePresence(currentProfile: Profile | null) {
     try {
       setError(null);
       
-      // Get all online users except current user
+      // Get all online users except current user (with more recent threshold)
+      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      
       const { data: presenceData, error: presenceError } = await supabase
         .from('user_presence')
         .select('profile_id, is_online, last_seen')
         .eq('is_online', true)
+        .gte('last_seen', fiveMinutesAgo) // Only users active in last 5 minutes
         .neq('profile_id', currentProfile.id);
 
       if (presenceError) {
@@ -95,6 +100,7 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         })
         .filter(Boolean) as OnlineUser[];
 
+      console.log(`📊 Found ${combinedData.length} online users:`, combinedData.map(u => u.profile.name));
       setOnlineUsers(combinedData);
     } catch (err: any) {
       console.error('Error fetching online users:', err);
@@ -109,6 +115,8 @@ export function useOnlinePresence(currentProfile: Profile | null) {
   useEffect(() => {
     if (!currentProfile?.id) return;
 
+    console.log(`🔄 Setting up presence tracking for ${currentProfile.name}`);
+
     // Set user as online when component mounts
     updatePresence(true);
 
@@ -122,23 +130,26 @@ export function useOnlinePresence(currentProfile: Profile | null) {
           schema: 'public',
           table: 'user_presence',
         },
-        () => {
+        (payload) => {
+          console.log('👥 Presence change detected:', payload);
           // Refetch online users when presence changes
           fetchOnlineUsers();
         }
       )
       .subscribe();
 
-    // Set up heartbeat to keep presence alive
+    // Set up heartbeat to keep presence alive - more frequent updates
     heartbeatIntervalRef.current = setInterval(() => {
       updatePresence(true);
-    }, 30000); // Update every 30 seconds
+    }, 15000); // Update every 15 seconds instead of 30
 
     // Initial fetch
     fetchOnlineUsers();
 
     // Cleanup function
     return () => {
+      console.log(`🔄 Cleaning up presence tracking for ${currentProfile.name}`);
+      
       // Set user as offline
       updatePresence(false);
       
@@ -153,14 +164,16 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         heartbeatIntervalRef.current = null;
       }
     };
-  }, [currentProfile?.id, updatePresence, fetchOnlineUsers]);
+  }, [currentProfile?.id, currentProfile?.name, updatePresence, fetchOnlineUsers]);
 
   // Handle page visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
+        console.log('📱 Page hidden - setting offline');
         updatePresence(false);
       } else {
+        console.log('📱 Page visible - setting online');
         updatePresence(true);
         fetchOnlineUsers();
       }
@@ -173,6 +186,20 @@ export function useOnlinePresence(currentProfile: Profile | null) {
     };
   }, [updatePresence, fetchOnlineUsers]);
 
+  // Handle beforeunload to set offline
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      console.log('🚪 Page unloading - setting offline');
+      updatePresence(false);
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [updatePresence]);
+
   const sendGameInvite = useCallback(async (targetProfileId: string) => {
     if (!currentProfile?.id) {
       toast.error('שגיאה: לא נמצא פרופיל פעיל');
@@ -180,6 +207,8 @@ export function useOnlinePresence(currentProfile: Profile | null) {
     }
 
     try {
+      console.log(`🎮 Sending game invite from ${currentProfile.name} to profile ${targetProfileId}`);
+
       // Create a new competition
       const { data: competition, error: competitionError } = await supabase
         .from('online_competitions')
@@ -195,6 +224,8 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         throw competitionError;
       }
 
+      console.log('🏆 Competition created:', competition.id);
+
       // Create invitation
       const { error: inviteError } = await supabase
         .from('competition_invitations')
@@ -209,9 +240,12 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         throw inviteError;
       }
 
-      // Send real-time notification
-      const channel = supabase.channel(`invite_${targetProfileId}`);
-      await channel.send({
+      console.log('📨 Invitation created in database');
+
+      // Send real-time notification using broadcast
+      const channel = supabase.channel(`global_invite_${targetProfileId}_${Date.now()}`);
+      
+      const broadcastResult = await channel.send({
         type: 'broadcast',
         event: 'game_invite',
         payload: {
@@ -219,12 +253,20 @@ export function useOnlinePresence(currentProfile: Profile | null) {
           from_name: currentProfile.name,
           competition_id: competition.id,
           invite_id: competition.id,
+          timestamp: Date.now(),
         }
       });
 
+      console.log('📡 Broadcast result:', broadcastResult);
+
+      // Clean up the channel
+      setTimeout(() => {
+        supabase.removeChannel(channel);
+      }, 1000);
+
       return true;
     } catch (error: any) {
-      console.error('Error sending game invite:', error);
+      console.error('❌ Error sending game invite:', error);
       toast.error('שגיאה בשליחת הזמנה: ' + error.message);
       return false;
     }

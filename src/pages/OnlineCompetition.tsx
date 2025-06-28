@@ -10,14 +10,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router-dom';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/components/ui/dialog";
 
 const OnlineCompetition = () => {
   const { user, selectedProfile, loading: authLoading } = useAuth();
@@ -26,15 +18,6 @@ const OnlineCompetition = () => {
   
   const [search, setSearch] = useState('');
   const [sendingInvite, setSendingInvite] = useState<string | null>(null);
-  const [incomingInvite, setIncomingInvite] = useState<{
-    id: string;
-    from_profile_id: string;
-    from_name: string;
-    competition_id: string;
-  } | null>(null);
-  
-  const inviteChannelRef = useRef<any>(null);
-  const competitionChannelRef = useRef<any>(null);
 
   // Redirect if no profile selected
   useEffect(() => {
@@ -42,73 +25,6 @@ const OnlineCompetition = () => {
       navigate('/profile-selection');
     }
   }, [authLoading, user, selectedProfile, navigate]);
-
-  // Listen for incoming invites
-  useEffect(() => {
-    if (!selectedProfile?.id) return;
-
-    inviteChannelRef.current = supabase
-      .channel(`invite_${selectedProfile.id}`)
-      .on('broadcast', { event: 'game_invite' }, (payload) => {
-        console.log('Received game invite:', payload);
-        setIncomingInvite({
-          id: payload.payload.invite_id,
-          from_profile_id: payload.payload.from_profile_id,
-          from_name: payload.payload.from_name,
-          competition_id: payload.payload.competition_id,
-        });
-      })
-      .subscribe();
-
-    return () => {
-      if (inviteChannelRef.current) {
-        supabase.removeChannel(inviteChannelRef.current);
-        inviteChannelRef.current = null;
-      }
-    };
-  }, [selectedProfile?.id]);
-
-  // Listen for competition status changes (for the sender)
-  useEffect(() => {
-    if (!selectedProfile?.id) return;
-
-    competitionChannelRef.current = supabase
-      .channel('competition_status_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'UPDATE',
-          schema: 'public',
-          table: 'online_competitions',
-          filter: `player1_id=eq.${selectedProfile.id}`,
-        },
-        (payload) => {
-          console.log('Competition status changed:', payload);
-          const newData = payload.new;
-          
-          // If competition became active, navigate to game
-          if (newData.status === 'active' && newData.started_at) {
-            toast.success('ההזמנה התקבלה! מתחיל משחק...');
-            setTimeout(() => {
-              navigate(`/online-game/${newData.id}`);
-            }, 1000);
-          }
-          
-          // If competition was cancelled, show notification
-          if (newData.status === 'cancelled') {
-            toast.info('ההזמנה נדחתה על ידי השחקן השני');
-          }
-        }
-      )
-      .subscribe();
-
-    return () => {
-      if (competitionChannelRef.current) {
-        supabase.removeChannel(competitionChannelRef.current);
-        competitionChannelRef.current = null;
-      }
-    };
-  }, [selectedProfile?.id, navigate]);
 
   const handleSendInvite = async (targetProfileId: string) => {
     setSendingInvite(targetProfileId);
@@ -118,7 +34,7 @@ const OnlineCompetition = () => {
       if (success) {
         const targetUser = onlineUsers.find(u => u.profile_id === targetProfileId);
         toast.success(`הזמנה נשלחה ל${targetUser?.profile.name || 'שחקן'}!`, {
-          description: 'ממתין לתגובה...',
+          description: 'ההזמנה נשלחה בזמן אמת - ממתין לתגובה...',
           duration: 5000,
         });
       }
@@ -126,57 +42,6 @@ const OnlineCompetition = () => {
       console.error('Error sending invite:', error);
     } finally {
       setSendingInvite(null);
-    }
-  };
-
-  const handleInviteResponse = async (accepted: boolean) => {
-    if (!incomingInvite || !selectedProfile) return;
-
-    try {
-      // Update invitation status
-      const { error: updateError } = await supabase
-        .from('competition_invitations')
-        .update({ status: accepted ? 'accepted' : 'declined' })
-        .eq('competition_id', incomingInvite.competition_id);
-
-      if (updateError) {
-        throw updateError;
-      }
-
-      if (accepted) {
-        // Update competition status to active
-        const { error: competitionError } = await supabase
-          .from('online_competitions')
-          .update({ 
-            status: 'active',
-            started_at: new Date().toISOString(),
-          })
-          .eq('id', incomingInvite.competition_id);
-
-        if (competitionError) {
-          throw competitionError;
-        }
-
-        toast.success('הזמנה התקבלה! מתחיל משחק...');
-        
-        // Navigate to game
-        setTimeout(() => {
-          navigate(`/online-game/${incomingInvite.competition_id}`);
-        }, 1000);
-      } else {
-        // Update competition status to cancelled
-        await supabase
-          .from('online_competitions')
-          .update({ status: 'cancelled' })
-          .eq('id', incomingInvite.competition_id);
-
-        toast.info('הזמנה נדחתה');
-      }
-    } catch (error: any) {
-      console.error('Error responding to invite:', error);
-      toast.error('שגיאה בתגובה להזמנה: ' + error.message);
-    } finally {
-      setIncomingInvite(null);
     }
   };
 
@@ -232,6 +97,7 @@ const OnlineCompetition = () => {
               <div>
                 <h2 className="text-xl font-bold text-blue-900">שלום, {selectedProfile.name}!</h2>
                 <p className="text-blue-700">מוכן לתחרות? בחר יריב מהרשימה למטה</p>
+                <p className="text-sm text-green-600 font-medium">✅ אתה מחובר ונראה לכל השחקנים האחרים</p>
               </div>
             </div>
           </CardContent>
@@ -281,6 +147,9 @@ const OnlineCompetition = () => {
                   <h3 className="text-xl font-bold text-gray-600 mb-2">אין שחקנים מחוברים כרגע</h3>
                   <p className="text-gray-500 mb-4">
                     נסה לרענן בעוד מספר דקות, או הזמן חבר להצטרף למשחק!
+                  </p>
+                  <p className="text-sm text-blue-600 mb-4">
+                    💡 טיפ: שחקנים נראים כמחוברים גם כשהם בדף התרגול או במשחקים
                   </p>
                   <Button onClick={refetch} className="bg-blue-500 hover:bg-blue-600 text-white">
                     רענן רשימה
@@ -374,47 +243,15 @@ const OnlineCompetition = () => {
                 <p className="text-sm">ללא הגבלת זמן - דיוק חשוב יותר ממהירות</p>
               </div>
             </div>
+            
+            <div className="mt-4 p-3 bg-white/60 rounded-lg">
+              <p className="text-sm text-orange-800 font-medium">
+                💡 <strong>חדש!</strong> הזמנות מגיעות בזמן אמת לכל השחקנים, גם אם הם בדף התרגול או במשחקים!
+              </p>
+            </div>
           </CardContent>
         </Card>
       </div>
-
-      {/* Incoming Invite Dialog */}
-      <Dialog open={!!incomingInvite} onOpenChange={() => setIncomingInvite(null)}>
-        <DialogContent className="bg-gradient-to-r from-blue-100 to-purple-100 border-4 border-blue-400 rounded-xl" dir="rtl">
-          <DialogHeader>
-            <DialogTitle className="text-2xl text-blue-900 flex items-center gap-2">
-              <Gamepad2 size={28} />
-              הזמנה למשחק!
-            </DialogTitle>
-            <DialogDescription className="text-blue-800 text-lg">
-              <strong>{incomingInvite?.from_name}</strong> מזמין אותך למשחק תחרותי!
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="py-4 text-center">
-            <div className="text-4xl mb-4">🎮</div>
-            <p className="text-blue-700 font-medium">
-              מוכן להתחרות ב-15 תרגילי מתמטיקה?
-            </p>
-          </div>
-
-          <DialogFooter className="gap-3">
-            <Button
-              onClick={() => handleInviteResponse(false)}
-              variant="outline"
-              className="flex-1 border-2 border-red-300 text-red-700 hover:bg-red-50"
-            >
-              דחה
-            </Button>
-            <Button
-              onClick={() => handleInviteResponse(true)}
-              className="flex-1 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold"
-            >
-              קבל והתחל!
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

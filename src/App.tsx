@@ -1,4 +1,3 @@
-
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -21,6 +20,7 @@ import EndlessRunnerGame from "./pages/games/EndlessRunnerGame";
 import OnlineCompetition from "./pages/OnlineCompetition";
 import OnlineGame from "./pages/OnlineGame";
 import { LanguageProvider } from "./contexts/LanguageContext";
+import GlobalGameInviteListener from "./components/GlobalGameInviteListener";
 
 const queryClient = new QueryClient();
 
@@ -32,6 +32,9 @@ const App = () => (
       <BrowserRouter>
         <LanguageProvider>
           <AuthProvider>
+            {/* Global Game Invite Listener - works on all pages */}
+            <GlobalGameInviteListener />
+            
             <Routes>
               <Route path="/" element={<Landing />} />
               <Route path="/app" element={<Index />} />
