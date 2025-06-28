@@ -13,7 +13,7 @@ import { useNavigate } from 'react-router-dom';
 
 const OnlineCompetition = () => {
   const { user, selectedProfile, loading: authLoading } = useAuth();
-  const { onlineUsers, loading, error, sendGameInvite, refetch } = useOnlinePresence(selectedProfile);
+  const { onlineUsers, loading, error, refetch } = useOnlinePresence(selectedProfile);
   const navigate = useNavigate();
   
   const [search, setSearch] = useState('');
@@ -27,18 +27,21 @@ const OnlineCompetition = () => {
   }, [authLoading, user, selectedProfile, navigate]);
 
   const handleSendInvite = async (targetProfileId: string) => {
+    if (!selectedProfile) return;
+    
     setSendingInvite(targetProfileId);
     
     try {
-      console.log(`🎮 Attempting to send invite to profile: ${targetProfileId}`);
+      console.log(`🎮 Creating competition between ${selectedProfile.id} and ${targetProfileId}`);
       
-      // Create competition first
+      // יצירת תחרות ישירות
       const { data: competition, error: competitionError } = await supabase
         .from('online_competitions')
         .insert({
-          player1_id: selectedProfile!.id,
+          player1_id: selectedProfile.id,
           player2_id: targetProfileId,
-          status: 'pending',
+          status: 'active', // ישר פעיל!
+          started_at: new Date().toISOString(),
         })
         .select()
         .single();
@@ -47,81 +50,23 @@ const OnlineCompetition = () => {
         throw competitionError;
       }
 
-      console.log('🏆 Competition created:', competition.id);
+      console.log('🏆 Competition created and active:', competition.id);
 
-      // Create invitation
-      const { error: inviteError } = await supabase
-        .from('competition_invitations')
-        .insert({
-          from_profile_id: selectedProfile!.id,
-          to_profile_id: targetProfileId,
-          competition_id: competition.id,
-          status: 'pending',
-        });
-
-      if (inviteError) {
-        throw inviteError;
-      }
-
-      console.log('📨 Invitation created in database');
-
-      // Send real-time notification using multiple channels for better delivery
       const targetUser = onlineUsers.find(u => u.profile_id === targetProfileId);
       
-      // Channel 1: Specific to target profile
-      const specificChannelName = `invite_${targetProfileId}`;
-      console.log(`📡 Sending to specific channel: ${specificChannelName}`);
-      
-      const specificChannel = supabase.channel(specificChannelName);
-      await specificChannel.subscribe();
-      
-      await specificChannel.send({
-        type: 'broadcast',
-        event: 'game_invite',
-        payload: {
-          from_profile_id: selectedProfile!.id,
-          from_name: selectedProfile!.name,
-          competition_id: competition.id,
-          invite_id: competition.id,
-          timestamp: Date.now(),
-        }
+      toast.success(`משחק נוצר עם ${targetUser?.profile.name || 'שחקן'}!`, {
+        description: 'נכנס למשחק עכשיו...',
+        duration: 3000,
       });
 
-      // Channel 2: Global channel
-      const globalChannelName = `global_invites_${targetProfileId}`;
-      console.log(`📡 Sending to global channel: ${globalChannelName}`);
-      
-      const globalChannel = supabase.channel(globalChannelName);
-      await globalChannel.subscribe();
-      
-      await globalChannel.send({
-        type: 'broadcast',
-        event: 'game_invite',
-        payload: {
-          from_profile_id: selectedProfile!.id,
-          from_name: selectedProfile!.name,
-          competition_id: competition.id,
-          invite_id: competition.id,
-          timestamp: Date.now(),
-        }
-      });
-
-      console.log('📡 Invites sent on both channels');
-
-      // Clean up channels
+      // כניסה ישירה למשחק
       setTimeout(() => {
-        supabase.removeChannel(specificChannel);
-        supabase.removeChannel(globalChannel);
-      }, 2000);
-
-      toast.success(`הזמנה נשלחה ל${targetUser?.profile.name || 'שחקן'}!`, {
-        description: 'ההזמנה נשלחה בזמן אמת - ממתין לתגובה...',
-        duration: 5000,
-      });
+        navigate(`/online-game/${competition.id}`);
+      }, 1000);
 
     } catch (error: any) {
-      console.error('❌ Error sending invite:', error);
-      toast.error('שגיאה בשליחת הזמנה: ' + error.message);
+      console.error('❌ Error creating game:', error);
+      toast.error('שגיאה ביצירת המשחק: ' + error.message);
     } finally {
       setSendingInvite(null);
     }
@@ -273,12 +218,12 @@ const OnlineCompetition = () => {
                             {sendingInvite === user.profile_id ? (
                               <>
                                 <LoadingSpinner size="sm" />
-                                שולח...
+                                יוצר משחק...
                               </>
                             ) : (
                               <>
                                 <Send size={16} />
-                                הזמן למשחק
+                                התחל משחק
                               </>
                             )}
                           </Button>
@@ -328,7 +273,7 @@ const OnlineCompetition = () => {
             
             <div className="mt-4 p-3 bg-white/60 rounded-lg">
               <p className="text-sm text-orange-800 font-medium">
-                💡 <strong>חדש!</strong> הזמנות מגיעות בזמן אמת לכל השחקנים, גם אם הם בדף התרגול או במשחקים!
+                💡 <strong>חדש!</strong> לחיצה על "התחל משחק" יוצרת משחק מיידי ושני השחקנים נכנסים יחד!
               </p>
             </div>
           </CardContent>
