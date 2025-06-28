@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { tips } from '@/lib/tips';
 
 export default function DailyTip({ onClose }: { onClose: () => void }) {
-  console.log("Rendering: DailyTip");
+  console.log("Rendering: DailyTip - Updated version");
   
   const [countdown, setCountdown] = useState(10);
   const [randomTip] = useState(() => tips[Math.floor(Math.random() * tips.length)]);
