@@ -4,11 +4,14 @@ import { useAuth } from '@/hooks/useAuth';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import LoadingSpinner from '@/components/LoadingSpinner';
-import { ArrowLeft, Trophy, Users, Crown, Gift } from 'lucide-react';
+import { ArrowLeft, Trophy, Users, Crown, Gift, Target, Clock } from 'lucide-react';
 import { renderAvatarByType, AvatarCharacter } from '@/components/AvatarSelector';
 import OptimizedPracticeQuestion from '@/components/OptimizedPracticeQuestion';
 import { awardFreeGame } from '@/lib/progressUtils';
 import ConfettiAnimation from '@/components/ConfettiAnimation';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent } from '@/components/ui/card';
+import { Progress } from '@/components/ui/progress';
 
 type Competition = {
   id: string;
@@ -42,6 +45,7 @@ export default function OnlineGame() {
   const [loading, setLoading] = useState(true);
   const [gameEnded, setGameEnded] = useState(false);
   const [showConfetti, setShowConfetti] = useState(false);
+  const [gameStartTime] = useState(Date.now());
   const channelRef = useRef<any>(null);
   const [isSubscribed, setIsSubscribed] = useState(false);
 
@@ -307,15 +311,17 @@ export default function OnlineGame() {
   if (!competition) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-kidGradient font-varela p-4">
-        <div className="text-center">
-          <p className="text-xl text-red-600 mb-4">שגיאה בטעינת המשחק</p>
-          <button
-            onClick={() => navigate('/online-competition')}
-            className="bg-blue-500 text-white px-6 py-2 rounded-lg font-bold"
-          >
-            חזרה לתחרות אונליין
-          </button>
-        </div>
+        <Card className="max-w-md mx-auto">
+          <CardContent className="p-6 text-center">
+            <p className="text-xl text-red-600 mb-4">שגיאה בטעינת המשחק</p>
+            <Button
+              onClick={() => navigate('/online-competition')}
+              className="bg-blue-500 text-white px-6 py-2 rounded-lg font-bold"
+            >
+              חזרה לתחרות אונליין
+            </Button>
+          </CardContent>
+        </Card>
       </div>
     );
   }
@@ -324,6 +330,10 @@ export default function OnlineGame() {
   const currentPlayerScore = isPlayer1 ? competition.player1_score : competition.player2_score;
   const opponentScore = isPlayer1 ? competition.player2_score : competition.player1_score;
   const opponentProfile = isPlayer1 ? competition.player2_profile : competition.player1_profile;
+  
+  const currentProgress = (currentPlayerScore / WINNING_SCORE) * 100;
+  const opponentProgress = (opponentScore / WINNING_SCORE) * 100;
+  const gameTimeMinutes = Math.floor((Date.now() - gameStartTime) / 60000);
 
   return (
     <>
@@ -332,125 +342,173 @@ export default function OnlineGame() {
         <div className="max-w-4xl mx-auto">
           {/* Header */}
           <div className="flex items-center justify-between mb-6">
-            <button
+            <Button
               onClick={() => {
                 localStorage.removeItem('currentCompetitionId');
                 navigate('/online-competition');
               }}
-              className="flex items-center gap-2 bg-white/80 text-blue-800 px-4 py-2 rounded-lg shadow hover:scale-105 transition"
+              variant="ghost"
+              className="bg-white/80 text-blue-800 hover:bg-white hover:scale-105 transition-transform"
             >
-              <ArrowLeft size={20} />
+              <ArrowLeft size={20} className="ml-2" />
               חזרה לתחרויות
-            </button>
+            </Button>
+            
             <h1 className="text-xl md:text-2xl font-bold text-pinkKid flex items-center gap-2">
               <Trophy size={28} />
               משחק תחרותי
             </h1>
+            
+            <div className="flex items-center gap-2 bg-white/80 text-blue-800 px-3 py-2 rounded-lg shadow">
+              <Clock size={16} />
+              <span className="text-sm font-bold">{gameTimeMinutes} דק'</span>
+            </div>
           </div>
 
           {/* Score Board */}
-          <div className="bg-white/90 rounded-xl p-4 md:p-6 mb-6 shadow-lg">
-            <div className="grid grid-cols-3 items-center gap-4">
-              {/* Current Player */}
-              <div className="text-center">
-                <div className="flex flex-col items-center gap-2">
-                  {renderAvatarByType(selectedProfile.avatar_character as AvatarCharacter, 'md')}
-                  <div>
-                    <p className="font-bold text-blue-900 text-sm md:text-base">{selectedProfile.name}</p>
-                    <p className="text-xs md:text-sm text-green-600">אתה</p>
-                  </div>
-                  <div className="text-2xl md:text-3xl font-bold text-blue-900 bg-blue-100 rounded-full w-12 h-12 md:w-16 md:h-16 flex items-center justify-center">
-                    {currentPlayerScore}
-                  </div>
-                </div>
-              </div>
-
-              {/* VS */}
-              <div className="text-center">
-                <div className="text-xl md:text-2xl font-bold text-gray-600">VS</div>
-                <div className="text-xs md:text-sm text-gray-500">עד {WINNING_SCORE} נקודות</div>
-                {gameEnded && competition.winner_id && (
-                  <div className="mt-2">
-                    {competition.winner_id === selectedProfile.id ? (
-                      <div className="text-green-600 font-bold flex items-center justify-center gap-2 text-sm md:text-base">
-                        <Crown size={20} />
-                        ניצחת!
+          <Card className="mb-6 bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-300 shadow-lg">
+            <CardContent className="p-4 md:p-6">
+              <div className="grid grid-cols-3 items-center gap-4">
+                {/* Current Player */}
+                <div className="text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative">
+                      {renderAvatarByType(selectedProfile.avatar_character as AvatarCharacter, 'md')}
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-blue-500 rounded-full border-2 border-white flex items-center justify-center">
+                        <span className="text-xs text-white font-bold">אתה</span>
                       </div>
-                    ) : (
-                      <div className="text-red-600 font-bold text-sm md:text-base">הפסדת</div>
-                    )}
+                    </div>
+                    <div>
+                      <p className="font-bold text-blue-900 text-sm md:text-base">{selectedProfile.name}</p>
+                      <div className="w-full max-w-[100px] mx-auto mt-2">
+                        <Progress value={currentProgress} className="h-2" indicatorClassName="bg-blue-500" />
+                        <p className="text-xs text-blue-600 mt-1">{currentPlayerScore}/{WINNING_SCORE}</p>
+                      </div>
+                    </div>
+                    <div className="text-2xl md:text-3xl font-bold text-blue-900 bg-blue-100 rounded-full w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-blue-300">
+                      {currentPlayerScore}
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
 
-              {/* Opponent */}
-              <div className="text-center">
-                <div className="flex flex-col items-center gap-2">
-                  {opponentProfile && renderAvatarByType(opponentProfile.avatar_character as AvatarCharacter, 'md')}
-                  <div>
-                    <p className="font-bold text-blue-900 text-sm md:text-base">{opponentProfile?.name || 'יריב'}</p>
-                    <p className="text-xs md:text-sm text-red-600">יריב</p>
+                {/* VS Section */}
+                <div className="text-center">
+                  <div className="text-xl md:text-2xl font-bold text-gray-600 mb-2">VS</div>
+                  <div className="flex items-center justify-center gap-2 text-xs md:text-sm text-gray-500 mb-2">
+                    <Target size={16} />
+                    עד {WINNING_SCORE} נקודות
                   </div>
-                  <div className="text-2xl md:text-3xl font-bold text-red-900 bg-red-100 rounded-full w-12 h-12 md:w-16 md:h-16 flex items-center justify-center">
-                    {opponentScore}
+                  {gameEnded && competition.winner_id && (
+                    <div className="mt-2">
+                      {competition.winner_id === selectedProfile.id ? (
+                        <div className="text-green-600 font-bold flex items-center justify-center gap-2 text-sm md:text-base">
+                          <Crown size={20} />
+                          <Gift size={20} />
+                          ניצחת!
+                        </div>
+                      ) : (
+                        <div className="text-red-600 font-bold text-sm md:text-base">הפסדת</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Opponent */}
+                <div className="text-center">
+                  <div className="flex flex-col items-center gap-3">
+                    <div className="relative">
+                      {opponentProfile && renderAvatarByType(opponentProfile.avatar_character as AvatarCharacter, 'md')}
+                      <div className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 rounded-full border-2 border-white flex items-center justify-center">
+                        <span className="text-xs text-white font-bold">יריב</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="font-bold text-blue-900 text-sm md:text-base">{opponentProfile?.name || 'יריב'}</p>
+                      <div className="w-full max-w-[100px] mx-auto mt-2">
+                        <Progress value={opponentProgress} className="h-2" indicatorClassName="bg-red-500" />
+                        <p className="text-xs text-red-600 mt-1">{opponentScore}/{WINNING_SCORE}</p>
+                      </div>
+                    </div>
+                    <div className="text-2xl md:text-3xl font-bold text-red-900 bg-red-100 rounded-full w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-red-300">
+                      {opponentScore}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          </div>
+            </CardContent>
+          </Card>
 
           {/* Game Status */}
           {gameEnded ? (
-            <div className="bg-white/90 rounded-xl p-4 md:p-6 shadow-lg text-center">
-              <div className="text-xl md:text-2xl font-bold mb-4">
-                {competition.winner_id === selectedProfile.id ? (
-                  <div className="text-green-600 flex items-center justify-center gap-2">
-                    <Crown size={32} />
-                    <Gift size={32} />
-                    מזל טוב! ניצחת והרווחת משחק חינם!
-                  </div>
-                ) : (
-                  <div className="text-red-600">המשחק הסתיים - הפסדת</div>
-                )}
-              </div>
-              <p className="text-gray-600 mb-4 text-sm md:text-base">
-                {competition.winner_id === selectedProfile.id 
-                  ? 'המשחק החינם נוסף לחשבונך. בדוק ב"המטבעות שלי"'
-                  : 'בפעם הבאה תצליח יותר!'
-                }
-              </p>
-              <button
-                onClick={() => {
-                  localStorage.removeItem('currentCompetitionId');
-                  navigate('/online-competition');
-                }}
-                className="bg-blue-500 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-600 transition"
-              >
-                חזרה לתחרויות
-              </button>
-            </div>
+            <Card className="bg-gradient-to-r from-yellow-100 to-orange-100 border-2 border-yellow-400 shadow-lg">
+              <CardContent className="p-6 text-center">
+                <div className="text-xl md:text-2xl font-bold mb-4">
+                  {competition.winner_id === selectedProfile.id ? (
+                    <div className="text-green-600 flex items-center justify-center gap-3">
+                      <Crown size={32} />
+                      <Gift size={32} />
+                      מזל טוב! ניצחת והרווחת משחק חינם!
+                    </div>
+                  ) : (
+                    <div className="text-red-600 flex items-center justify-center gap-2">
+                      <Trophy size={32} />
+                      המשחק הסתיים - הפסדת
+                    </div>
+                  )}
+                </div>
+                <p className="text-gray-700 mb-6 text-sm md:text-base">
+                  {competition.winner_id === selectedProfile.id 
+                    ? 'המשחק החינם נוסף לחשבונך. בדוק ב"המטבעות שלי"'
+                    : 'בפעם הבאה תצליח יותר! המשך להתרגל ותשתפר'
+                  }
+                </p>
+                <div className="flex flex-col sm:flex-row gap-3 justify-center">
+                  <Button
+                    onClick={() => {
+                      localStorage.removeItem('currentCompetitionId');
+                      navigate('/online-competition');
+                    }}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-lg font-bold"
+                  >
+                    חזרה לתחרויות
+                  </Button>
+                  <Button
+                    onClick={() => navigate('/practice')}
+                    variant="outline"
+                    className="border-2 border-blue-300 text-blue-700 hover:bg-blue-50 px-6 py-3 rounded-lg font-bold"
+                  >
+                    חזרה לתרגול
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           ) : (
             <>
               {/* Game Instructions */}
-              <div className="bg-blue-100 rounded-xl p-4 mb-6 border-2 border-blue-300">
-                <p className="text-blue-900 font-bold text-center text-sm md:text-base">
-                  📝 פתור תרגילי מיקס נכון כדי לקבל נקודות • המגיע ראשון ל-{WINNING_SCORE} נקודות מנצח!
-                </p>
-              </div>
+              <Card className="mb-6 bg-gradient-to-r from-green-100 to-blue-100 border-2 border-green-300">
+                <CardContent className="p-4">
+                  <p className="text-blue-900 font-bold text-center text-sm md:text-base flex items-center justify-center gap-2">
+                    <Target size={20} />
+                    פתור תרגילי מיקס נכון כדי לקבל נקודות • המגיע ראשון ל-{WINNING_SCORE} נקודות מנצח!
+                  </p>
+                </CardContent>
+              </Card>
 
               {/* Practice Question */}
-              <div className="bg-white/90 rounded-xl p-4 md:p-6 shadow-lg">
-                <OptimizedPracticeQuestion
-                  key={`online-${selectedProfile.id}-${competition.id}`}
-                  user={user}
-                  profile={selectedProfile}
-                  type="mixed"
-                  onAwardTrophy={() => {}}
-                  onDone={() => {}}
-                  sessionCorrectAnswers={0}
-                  onCorrectAnswer={handleCorrectAnswer}
-                />
-              </div>
+              <Card className="bg-white/90 border-2 border-blue-200 shadow-lg">
+                <CardContent className="p-4 md:p-6">
+                  <OptimizedPracticeQuestion
+                    key={`online-${selectedProfile.id}-${competition.id}`}
+                    user={user}
+                    profile={selectedProfile}
+                    type="mixed"
+                    onAwardTrophy={() => {}}
+                    onDone={() => {}}
+                    sessionCorrectAnswers={0}
+                    onCorrectAnswer={handleCorrectAnswer}
+                  />
+                </CardContent>
+              </Card>
             </>
           )}
         </div>
