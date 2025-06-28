@@ -54,11 +54,18 @@ export default function Practice() {
     }
   }, [user, selectedProfile, loading, navigate]);
 
+  // פונקציה יציבה לסגירת הטיפ היומי
+  const handleCloseDailyTip = useCallback(() => {
+    setShowDailyTip(false);
+  }, []);
+
   useEffect(() => {
     if (location.state?.showTip && !showDailyTip) {
       setShowDailyTip(true);
+      // ניקוי ה-state כדי שהטיפ לא יופיע שוב
+      navigate(location.pathname, { replace: true, state: {} });
     }
-  }, [location.state, showDailyTip]);
+  }, [location.state, showDailyTip, navigate, location.pathname]);
 
   useEffect(() => {
     if (sessionCorrectAnswers > 0 && sessionCorrectAnswers % 12 === 0) {
@@ -101,7 +108,7 @@ export default function Practice() {
         <RefreshPrompt onRefresh={handleRefresh} onDismiss={dismissPrompt} />
       )}
       
-      {showDailyTip && <DailyTip onClose={() => setShowDailyTip(false)} />}
+      {showDailyTip && <DailyTip onClose={handleCloseDailyTip} />}
       
       <div className="min-h-screen bg-kidGradient font-varela p-4 sm:p-8 flex flex-col items-center" dir="rtl">
         <PracticeHeader onShowContact={() => setShowContact(true)} />

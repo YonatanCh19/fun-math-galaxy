@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { tips } from '@/lib/tips';
 
 export default function DailyTip({ onClose }: { onClose: () => void }) {
@@ -8,46 +8,64 @@ export default function DailyTip({ onClose }: { onClose: () => void }) {
   const [randomTip] = useState(() => tips[Math.floor(Math.random() * tips.length)]);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const hasClosedRef = useRef(false);
+  const isInitializedRef = useRef(false);
 
-  useEffect(() => {
-    // אם כבר נסגר, לא להתחיל טיימר חדש
+  // יצירת פונקציית סגירה יציבה
+  const handleClose = useCallback(() => {
     if (hasClosedRef.current) return;
-
-    // ניקוי טיימר קיים אם יש
+    hasClosedRef.current = true;
+    
+    // ניקוי הטיימר
     if (timerRef.current) {
       clearTimeout(timerRef.current);
+      timerRef.current = null;
     }
+    
+    onClose();
+  }, [onClose]);
 
-    // אם הספירה הגיעה לאפס, סגור את הטיפ
-    if (countdown <= 0) {
-      hasClosedRef.current = true;
-      onClose();
+  // אפקט יחיד שמתחיל את הטיימר פעם אחת בלבד
+  useEffect(() => {
+    // אם כבר אותחל או נסגר, לא לעשות כלום
+    if (isInitializedRef.current || hasClosedRef.current) {
       return;
     }
 
-    // הגדרת טיימר חדש
-    timerRef.current = setTimeout(() => {
-      setCountdown(prev => prev - 1);
-    }, 1000);
+    isInitializedRef.current = true;
 
-    // ניקוי הטיימר כשהקומפוננט נהרס
+    const startTimer = () => {
+      if (hasClosedRef.current) return;
+
+      timerRef.current = setTimeout(() => {
+        if (hasClosedRef.current) return;
+
+        setCountdown(prev => {
+          const newCount = prev - 1;
+          if (newCount <= 0) {
+            handleClose();
+            return 0;
+          }
+          
+          // המשך הטיימר רק אם עדיין לא נסגר
+          if (!hasClosedRef.current) {
+            startTimer();
+          }
+          
+          return newCount;
+        });
+      }, 1000);
+    };
+
+    startTimer();
+
+    // ניקוי כשהקומפוננט נהרס
     return () => {
       if (timerRef.current) {
         clearTimeout(timerRef.current);
         timerRef.current = null;
       }
     };
-  }, [countdown, onClose]);
-
-  // ניקוי כשהקומפוננט נהרס
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-        timerRef.current = null;
-      }
-    };
-  }, []);
+  }, []); // dependency array ריק - רק פעם אחת!
 
   // אם כבר נסגר, לא להציג כלום
   if (hasClosedRef.current) {
