@@ -33,46 +33,88 @@ export default function GlobalGameInviteListener() {
   useEffect(() => {
     if (!selectedProfile?.id) return;
 
-    console.log(`🎧 Setting up global invite listener for ${selectedProfile.name}`);
+    console.log(`🎧 Setting up global invite listener for ${selectedProfile.name} (${selectedProfile.id})`);
 
-    // Create a unique channel for this profile
-    const channelName = `global_invite_${selectedProfile.id}`;
+    // Create a wildcard channel that listens to all invite channels for this profile
+    const channelName = `global_invites_${selectedProfile.id}`;
     
     inviteChannelRef.current = supabase
       .channel(channelName)
       .on('broadcast', { event: 'game_invite' }, (payload) => {
         console.log('🎮 Received game invite broadcast:', payload);
         
-        const invite: GameInvite = {
-          id: payload.payload.invite_id,
-          from_profile_id: payload.payload.from_profile_id,
-          from_name: payload.payload.from_name,
-          competition_id: payload.payload.competition_id,
-          timestamp: payload.payload.timestamp || Date.now(),
-        };
+        // Check if this invite is for the current profile
+        if (payload.payload && payload.payload.from_profile_id !== selectedProfile.id) {
+          const invite: GameInvite = {
+            id: payload.payload.invite_id || payload.payload.competition_id,
+            from_profile_id: payload.payload.from_profile_id,
+            from_name: payload.payload.from_name,
+            competition_id: payload.payload.competition_id,
+            timestamp: payload.payload.timestamp || Date.now(),
+          };
 
-        // Show toast notification
-        toast.info(`🎮 הזמנה למשחק מ${invite.from_name}!`, {
-          description: 'לחץ כאן כדי לראות את ההזמנה',
-          duration: 8000,
-          action: {
-            label: 'פתח',
-            onClick: () => setIncomingInvite(invite),
-          },
-        });
+          console.log('📨 Processing invite for current profile:', invite);
 
-        // Also set the invite state to show the dialog
-        setIncomingInvite(invite);
+          // Show toast notification
+          toast.info(`🎮 הזמנה למשחק מ${invite.from_name}!`, {
+            description: 'לחץ כאן כדי לראות את ההזמנה',
+            duration: 8000,
+            action: {
+              label: 'פתח',
+              onClick: () => setIncomingInvite(invite),
+            },
+          });
+
+          // Also set the invite state to show the dialog
+          setIncomingInvite(invite);
+        }
       })
       .subscribe((status) => {
         console.log(`📡 Global invite channel status for ${selectedProfile.name}:`, status);
       });
+
+    // Also listen to a specific channel for this profile
+    const specificChannelName = `invite_${selectedProfile.id}`;
+    const specificChannel = supabase
+      .channel(specificChannelName)
+      .on('broadcast', { event: 'game_invite' }, (payload) => {
+        console.log('🎯 Received specific game invite:', payload);
+        
+        if (payload.payload) {
+          const invite: GameInvite = {
+            id: payload.payload.invite_id || payload.payload.competition_id,
+            from_profile_id: payload.payload.from_profile_id,
+            from_name: payload.payload.from_name,
+            competition_id: payload.payload.competition_id,
+            timestamp: payload.payload.timestamp || Date.now(),
+          };
+
+          console.log('📨 Processing specific invite:', invite);
+
+          // Show toast notification
+          toast.info(`🎮 הזמנה למשחק מ${invite.from_name}!`, {
+            description: 'לחץ כאן כדי לראות את ההזמנה',
+            duration: 8000,
+            action: {
+              label: 'פתח',
+              onClick: () => setIncomingInvite(invite),
+            },
+          });
+
+          // Set the invite state to show the dialog
+          setIncomingInvite(invite);
+        }
+      })
+      .subscribe();
 
     return () => {
       console.log(`🎧 Cleaning up global invite listener for ${selectedProfile.name}`);
       if (inviteChannelRef.current) {
         supabase.removeChannel(inviteChannelRef.current);
         inviteChannelRef.current = null;
+      }
+      if (specificChannel) {
+        supabase.removeChannel(specificChannel);
       }
     };
   }, [selectedProfile?.id, selectedProfile?.name]);
@@ -81,8 +123,9 @@ export default function GlobalGameInviteListener() {
   useEffect(() => {
     if (!selectedProfile?.id) return;
 
+    const channelName = `competition_status_${selectedProfile.id}`;
     competitionChannelRef.current = supabase
-      .channel('competition_status_changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {

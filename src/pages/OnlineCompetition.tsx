@@ -30,16 +30,98 @@ const OnlineCompetition = () => {
     setSendingInvite(targetProfileId);
     
     try {
-      const success = await sendGameInvite(targetProfileId);
-      if (success) {
-        const targetUser = onlineUsers.find(u => u.profile_id === targetProfileId);
-        toast.success(`הזמנה נשלחה ל${targetUser?.profile.name || 'שחקן'}!`, {
-          description: 'ההזמנה נשלחה בזמן אמת - ממתין לתגובה...',
-          duration: 5000,
-        });
+      console.log(`🎮 Attempting to send invite to profile: ${targetProfileId}`);
+      
+      // Create competition first
+      const { data: competition, error: competitionError } = await supabase
+        .from('online_competitions')
+        .insert({
+          player1_id: selectedProfile!.id,
+          player2_id: targetProfileId,
+          status: 'pending',
+        })
+        .select()
+        .single();
+
+      if (competitionError) {
+        throw competitionError;
       }
-    } catch (error) {
-      console.error('Error sending invite:', error);
+
+      console.log('🏆 Competition created:', competition.id);
+
+      // Create invitation
+      const { error: inviteError } = await supabase
+        .from('competition_invitations')
+        .insert({
+          from_profile_id: selectedProfile!.id,
+          to_profile_id: targetProfileId,
+          competition_id: competition.id,
+          status: 'pending',
+        });
+
+      if (inviteError) {
+        throw inviteError;
+      }
+
+      console.log('📨 Invitation created in database');
+
+      // Send real-time notification using multiple channels for better delivery
+      const targetUser = onlineUsers.find(u => u.profile_id === targetProfileId);
+      
+      // Channel 1: Specific to target profile
+      const specificChannelName = `invite_${targetProfileId}`;
+      console.log(`📡 Sending to specific channel: ${specificChannelName}`);
+      
+      const specificChannel = supabase.channel(specificChannelName);
+      await specificChannel.subscribe();
+      
+      await specificChannel.send({
+        type: 'broadcast',
+        event: 'game_invite',
+        payload: {
+          from_profile_id: selectedProfile!.id,
+          from_name: selectedProfile!.name,
+          competition_id: competition.id,
+          invite_id: competition.id,
+          timestamp: Date.now(),
+        }
+      });
+
+      // Channel 2: Global channel
+      const globalChannelName = `global_invites_${targetProfileId}`;
+      console.log(`📡 Sending to global channel: ${globalChannelName}`);
+      
+      const globalChannel = supabase.channel(globalChannelName);
+      await globalChannel.subscribe();
+      
+      await globalChannel.send({
+        type: 'broadcast',
+        event: 'game_invite',
+        payload: {
+          from_profile_id: selectedProfile!.id,
+          from_name: selectedProfile!.name,
+          competition_id: competition.id,
+          invite_id: competition.id,
+          timestamp: Date.now(),
+        }
+      });
+
+      console.log('📡 Invites sent on both channels');
+
+      // Clean up channels
+      setTimeout(() => {
+        supabase.removeChannel(specificChannel);
+        supabase.removeChannel(globalChannel);
+      }, 2000);
+
+      toast.success(`הזמנה נשלחה ל${targetUser?.profile.name || 'שחקן'}!`, {
+        description: 'ההזמנה נשלחה בזמן אמת - ממתין לתגובה...',
+        duration: 5000,
+      });
+
+    } catch (error: any) {
+      console.error('❌ Error sending invite:', error);
+      toast.error('שגיאה בשליחת הזמנה: ' + error.message);
     } finally {
       setSendingInvite(null);
     }

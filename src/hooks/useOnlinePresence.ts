@@ -25,6 +25,8 @@ export function useOnlinePresence(currentProfile: Profile | null) {
     if (!currentProfile?.id) return;
 
     try {
+      console.log(`🔄 Updating presence for ${currentProfile.name}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
+      
       await supabase
         .from('user_presence')
         .upsert({
@@ -36,7 +38,7 @@ export function useOnlinePresence(currentProfile: Profile | null) {
       
       console.log(`✅ Presence updated: ${currentProfile.name} is ${isOnline ? 'online' : 'offline'}`);
     } catch (error) {
-      console.error('Error updating presence:', error);
+      console.error('❌ Error updating presence:', error);
     }
   }, [currentProfile?.id, currentProfile?.name]);
 
@@ -49,20 +51,23 @@ export function useOnlinePresence(currentProfile: Profile | null) {
 
     try {
       setError(null);
+      console.log(`📊 Fetching online users (excluding ${currentProfile.name})`);
       
-      // Get all online users except current user (with more recent threshold)
-      const fiveMinutesAgo = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      // Get all users who were active in the last 2 minutes (more lenient)
+      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
       
       const { data: presenceData, error: presenceError } = await supabase
         .from('user_presence')
         .select('profile_id, is_online, last_seen')
         .eq('is_online', true)
-        .gte('last_seen', fiveMinutesAgo) // Only users active in last 5 minutes
+        .gte('last_seen', twoMinutesAgo)
         .neq('profile_id', currentProfile.id);
 
       if (presenceError) {
         throw presenceError;
       }
+
+      console.log(`📊 Found ${presenceData?.length || 0} presence records`);
 
       if (!presenceData || presenceData.length === 0) {
         setOnlineUsers([]);
@@ -100,16 +105,16 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         })
         .filter(Boolean) as OnlineUser[];
 
-      console.log(`📊 Found ${combinedData.length} online users:`, combinedData.map(u => u.profile.name));
+      console.log(`👥 Found ${combinedData.length} online users:`, combinedData.map(u => u.profile.name));
       setOnlineUsers(combinedData);
     } catch (err: any) {
-      console.error('Error fetching online users:', err);
+      console.error('❌ Error fetching online users:', err);
       setError('שגיאה בטעינת משתמשים מחוברים: ' + err.message);
       setOnlineUsers([]);
     } finally {
       setLoading(false);
     }
-  }, [currentProfile?.id]);
+  }, [currentProfile?.id, currentProfile?.name]);
 
   // Subscribe to presence changes
   useEffect(() => {
@@ -120,9 +125,10 @@ export function useOnlinePresence(currentProfile: Profile | null) {
     // Set user as online when component mounts
     updatePresence(true);
 
-    // Subscribe to presence changes
+    // Subscribe to presence changes with a unique channel name
+    const channelName = `presence_${currentProfile.id}_${Date.now()}`;
     presenceChannelRef.current = supabase
-      .channel('user_presence_changes')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -133,15 +139,19 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         (payload) => {
           console.log('👥 Presence change detected:', payload);
           // Refetch online users when presence changes
-          fetchOnlineUsers();
+          setTimeout(() => {
+            fetchOnlineUsers();
+          }, 500); // Small delay to ensure DB is updated
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log(`📡 Presence channel status for ${currentProfile.name}:`, status);
+      });
 
-    // Set up heartbeat to keep presence alive - more frequent updates
+    // Set up heartbeat to keep presence alive - every 10 seconds
     heartbeatIntervalRef.current = setInterval(() => {
       updatePresence(true);
-    }, 15000); // Update every 15 seconds instead of 30
+    }, 10000);
 
     // Initial fetch
     fetchOnlineUsers();
@@ -170,10 +180,10 @@ export function useOnlinePresence(currentProfile: Profile | null) {
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        console.log('📱 Page hidden - setting offline');
-        updatePresence(false);
+        console.log('📱 Page hidden - keeping online (user might be switching tabs)');
+        // Don't set offline immediately - user might just be switching tabs
       } else {
-        console.log('📱 Page visible - setting online');
+        console.log('📱 Page visible - ensuring online status');
         updatePresence(true);
         fetchOnlineUsers();
       }
@@ -242,10 +252,31 @@ export function useOnlinePresence(currentProfile: Profile | null) {
 
       console.log('📨 Invitation created in database');
 
-      // Send real-time notification using broadcast
-      const channel = supabase.channel(`global_invite_${targetProfileId}_${Date.now()}`);
+      // Send real-time notification using a dedicated channel
+      const inviteChannelName = `invite_${targetProfileId}_${Date.now()}`;
+      console.log(`📡 Creating invite channel: ${inviteChannelName}`);
       
-      const broadcastResult = await channel.send({
+      const inviteChannel = supabase.channel(inviteChannelName);
+      
+      // Subscribe first, then send
+      await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('Channel subscription timeout')), 5000);
+        
+        inviteChannel.subscribe((status) => {
+          console.log(`📡 Invite channel status: ${status}`);
+          if (status === 'SUBSCRIBED') {
+            clearTimeout(timeout);
+            resolve(status);
+          } else if (status === 'CHANNEL_ERROR') {
+            clearTimeout(timeout);
+            reject(new Error('Channel subscription failed'));
+          }
+        });
+      });
+
+      // Now send the broadcast
+      console.log('📤 Sending broadcast message...');
+      const broadcastResult = await inviteChannel.send({
         type: 'broadcast',
         event: 'game_invite',
         payload: {
@@ -259,10 +290,11 @@ export function useOnlinePresence(currentProfile: Profile | null) {
 
       console.log('📡 Broadcast result:', broadcastResult);
 
-      // Clean up the channel
+      // Clean up the channel after a delay
       setTimeout(() => {
-        supabase.removeChannel(channel);
-      }, 1000);
+        console.log('🧹 Cleaning up invite channel');
+        supabase.removeChannel(inviteChannel);
+      }, 2000);
 
       return true;
     } catch (error: any) {
