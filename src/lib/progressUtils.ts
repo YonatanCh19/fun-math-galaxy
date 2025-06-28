@@ -1,4 +1,3 @@
-
 import { supabase } from '@/integrations/supabase/client';
 
 export type UserProgress = {
@@ -166,6 +165,35 @@ export async function useFreeGame(profileId: string): Promise<boolean> {
         return true;
     } catch (error) {
         console.error('Error using free game:', error);
+        return false;
+    }
+}
+
+// New function to use 3 coins for a free game
+export async function useCoinsForGame(profileId: string): Promise<boolean> {
+    try {
+        console.log('Using 3 coins for game for profile:', profileId);
+        
+        // Get current progress
+        const currentProgress = await getUserProgress(profileId);
+        
+        if (currentProgress.coins < 3) {
+            console.log('Not enough coins available. Current coins:', currentProgress.coins);
+            return false;
+        }
+        
+        const newCoins = currentProgress.coins - 3;
+        
+        // Update with decremented coin count
+        await updateUserProgress(profileId, { 
+            ...currentProgress,
+            coins: newCoins 
+        });
+        
+        console.log('3 coins used successfully. Remaining coins:', newCoins);
+        return true;
+    } catch (error) {
+        console.error('Error using coins for game:', error);
         return false;
     }
 }
