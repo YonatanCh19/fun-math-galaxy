@@ -143,8 +143,9 @@ export default function OnlineGame() {
       return;
     }
 
-    const uniqueChannelName = `game-${competitionId}-${Date.now()}`;
-    console.log('Subscribing to competition updates:', uniqueChannelName);
+    // Create a unique channel name to avoid conflicts
+    const uniqueChannelName = `competition-realtime-${competitionId}-${selectedProfile?.id}-${Date.now()}`;
+    console.log('Subscribing to competition updates with channel:', uniqueChannelName);
 
     try {
       channelRef.current = supabase
@@ -152,19 +153,27 @@ export default function OnlineGame() {
         .on(
           'postgres_changes',
           {
-            event: '*',
+            event: 'UPDATE',
             schema: 'public',
             table: 'online_competitions',
             filter: `id=eq.${competitionId}`
           },
           (payload) => {
-            console.log('Competition update received:', payload);
+            console.log('🔥 Real-time competition update received:', payload);
+            
             if (payload.new && payload.eventType === 'UPDATE') {
               const updatedData = payload.new as Competition;
-              console.log('Updating competition state with:', updatedData);
+              console.log('📊 Updating competition scores in real-time:', {
+                player1_score: updatedData.player1_score,
+                player2_score: updatedData.player2_score,
+                status: updatedData.status,
+                winner_id: updatedData.winner_id
+              });
+              
               setCompetition(prev => {
                 if (!prev) return null;
-                return {
+                
+                const newCompetition = {
                   ...prev,
                   player1_score: updatedData.player1_score,
                   player2_score: updatedData.player2_score,
@@ -172,32 +181,39 @@ export default function OnlineGame() {
                   winner_id: updatedData.winner_id,
                   ended_at: updatedData.ended_at
                 };
+                
+                console.log('🎯 Competition state updated:', newCompetition);
+                return newCompetition;
               });
               
+              // Check if game ended
               if (updatedData.status === 'completed' || updatedData.winner_id) {
+                console.log('🏁 Game ended detected in real-time');
                 setGameEnded(true);
+                
                 if (selectedProfile && updatedData.winner_id === selectedProfile.id) {
+                  console.log('🎉 Current player won!');
                   setShowConfetti(true);
                   setTimeout(() => setShowConfetti(false), 5000);
                 }
               }
             }
-            fetchCompetition();
           }
         )
         .subscribe((status) => {
-          console.log('Competition channel subscription status:', status);
+          console.log('📡 Competition channel subscription status:', status);
           if (status === 'SUBSCRIBED') {
             setIsSubscribed(true);
+            console.log('✅ Successfully subscribed to competition updates');
           } else if (status === 'CHANNEL_ERROR') {
-            console.error('Competition channel subscription error');
+            console.error('❌ Competition channel subscription error');
             setIsSubscribed(false);
           }
         });
     } catch (error) {
       console.error('Error creating competition channel:', error);
     }
-  }, [competitionId, fetchCompetition, selectedProfile, isSubscribed]);
+  }, [competitionId, selectedProfile?.id, isSubscribed]);
 
   useEffect(() => {
     if (!user || !selectedProfile) {
@@ -216,7 +232,11 @@ export default function OnlineGame() {
 
     console.log('Starting game setup for competition:', competitionId);
     fetchCompetition();
-    subscribeToCompetition();
+    
+    // Subscribe to real-time updates after a short delay to ensure competition is loaded
+    setTimeout(() => {
+      subscribeToCompetition();
+    }, 1000);
 
     return () => {
       console.log('Cleaning up OnlineGame component');
@@ -235,7 +255,7 @@ export default function OnlineGame() {
       const currentScore = isPlayer1 ? competition.player1_score : competition.player2_score;
       const newScore = currentScore + 1;
 
-      console.log(`Player ${selectedProfile.name} (${isPlayer1 ? 'Player1' : 'Player2'}) scored! New score: ${newScore}`);
+      console.log(`🎯 Player ${selectedProfile.name} (${isPlayer1 ? 'Player1' : 'Player2'}) scored! New score: ${newScore}`);
 
       const updateData: Partial<Competition> = {
         ...(isPlayer1 ? { player1_score: newScore } : { player2_score: newScore })
@@ -247,7 +267,7 @@ export default function OnlineGame() {
         updateData.winner_id = selectedProfile.id;
         updateData.ended_at = new Date().toISOString();
         
-        console.log('Game ended! Winner:', selectedProfile.id);
+        console.log('🏆 Game ended! Winner:', selectedProfile.id);
         setGameEnded(true);
         setShowConfetti(true);
         
@@ -268,7 +288,7 @@ export default function OnlineGame() {
         }, 5000);
       }
 
-      console.log('Updating competition with data:', updateData);
+      console.log('📤 Updating competition in database with data:', updateData);
 
       const { error } = await supabase
         .from('online_competitions')
@@ -276,11 +296,12 @@ export default function OnlineGame() {
         .eq('id', competition.id);
 
       if (error) {
-        console.error('Error updating score:', error);
+        console.error('❌ Error updating score:', error);
         toast.error('שגיאה בעדכון הניקוד');
       } else {
-        console.log('Score updated successfully in database');
+        console.log('✅ Score updated successfully in database - real-time update should trigger');
         
+        // Optimistically update local state immediately for better UX
         setCompetition(prev => {
           if (!prev) return null;
           return {
@@ -362,6 +383,9 @@ export default function OnlineGame() {
             <div className="flex items-center gap-2 bg-white/80 text-blue-800 px-3 py-2 rounded-lg shadow">
               <Clock size={16} />
               <span className="text-sm font-bold">{gameTimeMinutes} דק'</span>
+              {isSubscribed && (
+                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="מחובר בזמן אמת"></div>
+              )}
             </div>
           </div>
 
@@ -385,7 +409,7 @@ export default function OnlineGame() {
                         <p className="text-xs text-blue-600 mt-1">{currentPlayerScore}/{WINNING_SCORE}</p>
                       </div>
                     </div>
-                    <div className="text-2xl md:text-3xl font-bold text-blue-900 bg-blue-100 rounded-full w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-blue-300">
+                    <div className="text-2xl md:text-3xl font-bold text-blue-900 bg-blue-100 rounded-full w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-blue-300 transition-all duration-300">
                       {currentPlayerScore}
                     </div>
                   </div>
@@ -429,7 +453,7 @@ export default function OnlineGame() {
                         <p className="text-xs text-red-600 mt-1">{opponentScore}/{WINNING_SCORE}</p>
                       </div>
                     </div>
-                    <div className="text-2xl md:text-3xl font-bold text-red-900 bg-red-100 rounded-full w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-red-300">
+                    <div className="text-2xl md:text-3xl font-bold text-red-900 bg-red-100 rounded-full w-12 h-12 md:w-16 md:h-16 flex items-center justify-center border-2 border-red-300 transition-all duration-300">
                       {opponentScore}
                     </div>
                   </div>
@@ -490,6 +514,12 @@ export default function OnlineGame() {
                   <p className="text-blue-900 font-bold text-center text-sm md:text-base flex items-center justify-center gap-2">
                     <Target size={20} />
                     פתור תרגילי מיקס נכון כדי לקבל נקודות • המגיע ראשון ל-{WINNING_SCORE} נקודות מנצח!
+                    {isSubscribed && (
+                      <span className="text-green-600 text-xs flex items-center gap-1">
+                        <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                        בזמן אמת
+                      </span>
+                    )}
                   </p>
                 </CardContent>
               </Card>
