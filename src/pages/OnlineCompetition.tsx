@@ -34,6 +34,7 @@ const OnlineCompetition = () => {
   } | null>(null);
   
   const inviteChannelRef = useRef<any>(null);
+  const competitionChannelRef = useRef<any>(null);
 
   // Redirect if no profile selected
   useEffect(() => {
@@ -66,6 +67,48 @@ const OnlineCompetition = () => {
       }
     };
   }, [selectedProfile?.id]);
+
+  // Listen for competition status changes (for the sender)
+  useEffect(() => {
+    if (!selectedProfile?.id) return;
+
+    competitionChannelRef.current = supabase
+      .channel('competition_status_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'online_competitions',
+          filter: `player1_id=eq.${selectedProfile.id}`,
+        },
+        (payload) => {
+          console.log('Competition status changed:', payload);
+          const newData = payload.new;
+          
+          // If competition became active, navigate to game
+          if (newData.status === 'active' && newData.started_at) {
+            toast.success('ההזמנה התקבלה! מתחיל משחק...');
+            setTimeout(() => {
+              navigate(`/online-game/${newData.id}`);
+            }, 1000);
+          }
+          
+          // If competition was cancelled, show notification
+          if (newData.status === 'cancelled') {
+            toast.info('ההזמנה נדחתה על ידי השחקן השני');
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (competitionChannelRef.current) {
+        supabase.removeChannel(competitionChannelRef.current);
+        competitionChannelRef.current = null;
+      }
+    };
+  }, [selectedProfile?.id, navigate]);
 
   const handleSendInvite = async (targetProfileId: string) => {
     setSendingInvite(targetProfileId);
