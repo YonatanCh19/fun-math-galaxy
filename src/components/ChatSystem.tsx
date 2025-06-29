@@ -21,7 +21,8 @@ import {
   Search,
   Clock,
   AlertCircle,
-  RefreshCw
+  RefreshCw,
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import LoadingSpinner from './LoadingSpinner';
@@ -37,8 +38,8 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
     conversations, 
     messages, 
     activeConversation, 
-    loading, 
-    error,
+    loading: chatLoading, 
+    error: chatError,
     fetchMessages, 
     sendMessage, 
     startConversation,
@@ -50,6 +51,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
   const [messageInput, setMessageInput] = useState('');
   const [search, setSearch] = useState('');
   const [sending, setSending] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto scroll to bottom when new messages arrive
@@ -57,13 +59,21 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Reset view when dialog opens
+  // Reset view when dialog opens and handle initial loading
   useEffect(() => {
     if (isOpen) {
       setView('conversations');
       setActiveConversation(null);
       setSearch('');
       setMessageInput('');
+      setInitialLoading(true);
+      
+      // Set initial loading to false after a short delay
+      const timer = setTimeout(() => {
+        setInitialLoading(false);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
     }
   }, [isOpen, setActiveConversation]);
 
@@ -135,6 +145,42 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
     </div>
   );
 
+  // Show initial loading screen
+  if (initialLoading) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent 
+          className="w-[95vw] max-w-md h-[80vh] bg-gradient-to-b from-blue-50 to-purple-50 border-4 border-blue-300 rounded-2xl overflow-hidden"
+          dir="rtl"
+        >
+          <DialogHeader className="p-4 pb-2 border-b border-blue-200">
+            <DialogTitle className="text-xl text-blue-900 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <MessageCircle size={24} className="text-blue-600" />
+                הצ'אט שלי
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={onClose}
+                className="text-blue-600 hover:bg-blue-100"
+              >
+                <X size={20} />
+              </Button>
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-center">
+              <LoadingSpinner message="טוען צ'אט..." size="lg" />
+              <p className="text-blue-600 mt-4 text-sm">מכין את הצ'אט שלך...</p>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent 
@@ -142,44 +188,57 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
         dir="rtl"
       >
         <DialogHeader className="p-4 pb-2 border-b border-blue-200">
-          <DialogTitle className="text-xl text-blue-900 flex items-center gap-2">
-            {view === 'conversations' && (
-              <>
-                <MessageCircle size={24} className="text-blue-600" />
-                הצ'אט שלי
-              </>
-            )}
-            {view === 'users' && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => setView('conversations')}
-                  className="mr-2"
-                >
-                  <ArrowLeft size={20} />
-                </Button>
-                <Users size={24} className="text-green-600" />
-                בחר משתמש לצ'אט
-              </>
-            )}
-            {view === 'chat' && currentConversation && (
-              <>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => {
-                    setView('conversations');
-                    setActiveConversation(null);
-                  }}
-                  className="mr-2"
-                >
-                  <ArrowLeft size={20} />
-                </Button>
-                {renderAvatarByType(currentConversation.other_profile?.avatar_character as AvatarCharacter, 'sm')}
-                {currentConversation.other_profile?.name}
-              </>
-            )}
+          <DialogTitle className="text-xl text-blue-900 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              {view === 'conversations' && (
+                <>
+                  <MessageCircle size={24} className="text-blue-600" />
+                  הצ'אט שלי
+                </>
+              )}
+              {view === 'users' && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => setView('conversations')}
+                    className="mr-2 hover:bg-blue-100"
+                  >
+                    <ArrowLeft size={20} />
+                  </Button>
+                  <Users size={24} className="text-green-600" />
+                  בחר משתמש לצ'אט
+                </>
+              )}
+              {view === 'chat' && currentConversation && (
+                <>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      setView('conversations');
+                      setActiveConversation(null);
+                    }}
+                    className="mr-2 hover:bg-blue-100"
+                  >
+                    <ArrowLeft size={20} />
+                  </Button>
+                  <div className="flex items-center gap-2">
+                    {renderAvatarByType(currentConversation.other_profile?.avatar_character as AvatarCharacter, 'sm')}
+                    <span>{currentConversation.other_profile?.name}</span>
+                  </div>
+                </>
+              )}
+            </div>
+            
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={onClose}
+              className="text-blue-600 hover:bg-blue-100"
+            >
+              <X size={20} />
+            </Button>
           </DialogTitle>
         </DialogHeader>
 
@@ -190,7 +249,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
               <div className="p-4 space-y-3">
                 <Button
                   onClick={() => setView('users')}
-                  className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold"
+                  className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold min-h-[44px]"
                 >
                   <Users size={20} className="ml-2" />
                   התחל צ'אט חדש
@@ -198,24 +257,31 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
               </div>
 
               <ScrollArea className="flex-1 px-4">
-                {loading ? (
+                {chatLoading ? (
                   <div className="flex justify-center py-8">
                     <LoadingSpinner message="טוען שיחות..." />
                   </div>
-                ) : error ? (
-                  <ErrorDisplay message={error} onRetry={() => window.location.reload()} />
+                ) : chatError ? (
+                  <ErrorDisplay message={chatError} onRetry={() => window.location.reload()} />
                 ) : conversations.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <MessageCircle size={48} className="mx-auto mb-4 opacity-50" />
-                    <p className="font-bold mb-2">אין שיחות עדיין</p>
-                    <p className="text-sm">התחל צ'אט חדש עם חבר!</p>
+                    <p className="font-bold mb-2 text-lg">אין שיחות עדיין</p>
+                    <p className="text-sm mb-4">התחל צ'אט חדש עם חבר!</p>
+                    <Button
+                      onClick={() => setView('users')}
+                      className="bg-blue-500 hover:bg-blue-600 text-white"
+                    >
+                      <Users size={16} className="ml-2" />
+                      מצא חברים
+                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-2 pb-4">
                     {conversations.map((conversation) => (
                       <Card
                         key={conversation.id}
-                        className="cursor-pointer hover:bg-blue-50 transition-colors border-2 border-blue-200 hover:border-blue-400"
+                        className="cursor-pointer hover:bg-blue-50 transition-colors border-2 border-blue-200 hover:border-blue-400 hover:shadow-md"
                         onClick={() => handleOpenConversation(conversation.id)}
                       >
                         <CardContent className="p-3">
@@ -267,7 +333,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     placeholder="חפש משתמש..."
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    className="pr-10 border-2 border-blue-200"
+                    className="pr-10 border-2 border-blue-200 focus:border-blue-400"
                   />
                 </div>
               </div>
@@ -282,11 +348,15 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                 ) : filteredUsers.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <Users size={48} className="mx-auto mb-4 opacity-50" />
-                    <p className="font-bold mb-2">אין משתמשים מחוברים</p>
-                    <p className="text-sm">נסה לרענן או חכה שחברים יתחברו</p>
-                    <Button onClick={refetch} className="mt-4" variant="outline">
-                      <RefreshCw size={16} className="ml-2" />
-                      רענן
+                    <p className="font-bold mb-2 text-lg">
+                      {search ? `אין משתמשים בשם "${search}"` : 'אין משתמשים מחוברים'}
+                    </p>
+                    <p className="text-sm mb-4">
+                      {search ? 'נסה לחפש שם אחר' : 'נסה לרענן או חכה שחברים יתחברו'}
+                    </p>
+                    <Button onClick={refetch} variant="outline" className="flex items-center gap-2">
+                      <RefreshCw size={16} />
+                      רענן רשימה
                     </Button>
                   </div>
                 ) : (
@@ -294,7 +364,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     {filteredUsers.map((user) => (
                       <Card
                         key={user.profile_id}
-                        className="cursor-pointer hover:bg-green-50 transition-colors border-2 border-green-200 hover:border-green-400"
+                        className="cursor-pointer hover:bg-green-50 transition-colors border-2 border-green-200 hover:border-green-400 hover:shadow-md"
                         onClick={() => handleStartChat(user.profile_id)}
                       >
                         <CardContent className="p-3">
@@ -305,11 +375,14 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                             </div>
                             <div className="flex-1">
                               <p className="font-bold text-blue-900">{user.profile.name}</p>
-                              <p className="text-sm text-green-600">מחובר עכשיו</p>
+                              <p className="text-sm text-green-600 flex items-center gap-1">
+                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                מחובר עכשיו
+                              </p>
                             </div>
                             <Button
                               size="sm"
-                              className="bg-blue-500 hover:bg-blue-600 text-white"
+                              className="bg-blue-500 hover:bg-blue-600 text-white min-h-[36px] min-w-[36px]"
                             >
                               <MessageCircle size={16} />
                             </Button>
@@ -328,14 +401,15 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
             <div className="h-full flex flex-col">
               {/* Messages */}
               <ScrollArea className="flex-1 px-4 py-2">
-                {error ? (
-                  <ErrorDisplay message={error} />
+                {chatError ? (
+                  <ErrorDisplay message={chatError} />
                 ) : (
                   <div className="space-y-3">
                     {messages.length === 0 ? (
                       <div className="text-center py-8 text-gray-500">
                         <MessageCircle size={48} className="mx-auto mb-4 opacity-50" />
-                        <p>התחילו לכתוב הודעות!</p>
+                        <p className="font-bold mb-2">התחילו לכתוב הודעות!</p>
+                        <p className="text-sm">זה המקום לשוחח עם {currentConversation.other_profile?.name}</p>
                       </div>
                     ) : (
                       messages.map((message) => {
@@ -346,13 +420,13 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                             className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}
                           >
                             <div
-                              className={`max-w-[80%] p-3 rounded-2xl ${
+                              className={`max-w-[80%] p-3 rounded-2xl shadow-sm ${
                                 isFromMe
                                   ? 'bg-blue-500 text-white rounded-br-sm'
                                   : 'bg-white border-2 border-gray-200 text-gray-800 rounded-bl-sm'
                               }`}
                             >
-                              <p className="text-sm">{message.message}</p>
+                              <p className="text-sm leading-relaxed">{message.message}</p>
                               <p className={`text-xs mt-1 ${isFromMe ? 'text-blue-100' : 'text-gray-500'}`}>
                                 {formatTime(message.created_at)}
                               </p>
@@ -367,13 +441,13 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
               </ScrollArea>
 
               {/* Message Input */}
-              <div className="p-4 border-t border-blue-200">
+              <div className="p-4 border-t border-blue-200 bg-white/50">
                 <div className="flex gap-2">
                   <Input
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     placeholder="כתוב הודעה..."
-                    className="flex-1 border-2 border-blue-200"
+                    className="flex-1 border-2 border-blue-200 focus:border-blue-400 bg-white"
                     onKeyPress={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -381,11 +455,12 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                       }
                     }}
                     disabled={sending}
+                    maxLength={500}
                   />
                   <Button
                     onClick={handleSendMessage}
                     disabled={!messageInput.trim() || sending}
-                    className="bg-blue-500 hover:bg-blue-600 text-white min-h-[44px] min-w-[44px]"
+                    className="bg-blue-500 hover:bg-blue-600 text-white min-h-[44px] min-w-[44px] disabled:opacity-50"
                   >
                     {sending ? (
                       <LoadingSpinner size="sm" />
@@ -394,6 +469,9 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     )}
                   </Button>
                 </div>
+                <p className="text-xs text-gray-500 mt-1 text-center">
+                  ההודעות נשמרות ל-24 שעות ואז נמחקות אוטומטית
+                </p>
               </div>
             </div>
           )}
