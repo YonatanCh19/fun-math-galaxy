@@ -25,8 +25,6 @@ export function useOnlinePresence(currentProfile: Profile | null) {
     if (!currentProfile?.id) return;
 
     try {
-      console.log(`🔄 Updating presence for ${currentProfile.name}: ${isOnline ? 'ONLINE' : 'OFFLINE'}`);
-      
       await supabase
         .from('user_presence')
         .upsert({
@@ -35,12 +33,10 @@ export function useOnlinePresence(currentProfile: Profile | null) {
           last_seen: new Date().toISOString(),
           updated_at: new Date().toISOString(),
         });
-      
-      console.log(`✅ Presence updated: ${currentProfile.name} is ${isOnline ? 'online' : 'offline'}`);
     } catch (error) {
-      console.error('❌ Error updating presence:', error);
+      console.error('Error updating presence:', error);
     }
-  }, [currentProfile?.id, currentProfile?.name]);
+  }, [currentProfile?.id]);
 
   const fetchOnlineUsers = useCallback(async () => {
     if (!currentProfile?.id) {
@@ -51,23 +47,17 @@ export function useOnlinePresence(currentProfile: Profile | null) {
 
     try {
       setError(null);
-      console.log(`📊 Fetching online users (excluding ${currentProfile.name})`);
       
-      // Get all users who were active in the last 2 minutes (more lenient)
-      const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000).toISOString();
-      
+      // Get all online users except current user
       const { data: presenceData, error: presenceError } = await supabase
         .from('user_presence')
         .select('profile_id, is_online, last_seen')
         .eq('is_online', true)
-        .gte('last_seen', twoMinutesAgo)
         .neq('profile_id', currentProfile.id);
 
       if (presenceError) {
         throw presenceError;
       }
-
-      console.log(`📊 Found ${presenceData?.length || 0} presence records`);
 
       if (!presenceData || presenceData.length === 0) {
         setOnlineUsers([]);
@@ -105,30 +95,26 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         })
         .filter(Boolean) as OnlineUser[];
 
-      console.log(`👥 Found ${combinedData.length} online users:`, combinedData.map(u => u.profile.name));
       setOnlineUsers(combinedData);
     } catch (err: any) {
-      console.error('❌ Error fetching online users:', err);
+      console.error('Error fetching online users:', err);
       setError('שגיאה בטעינת משתמשים מחוברים: ' + err.message);
       setOnlineUsers([]);
     } finally {
       setLoading(false);
     }
-  }, [currentProfile?.id, currentProfile?.name]);
+  }, [currentProfile?.id]);
 
   // Subscribe to presence changes
   useEffect(() => {
     if (!currentProfile?.id) return;
 
-    console.log(`🔄 Setting up presence tracking for ${currentProfile.name}`);
-
     // Set user as online when component mounts
     updatePresence(true);
 
-    // Subscribe to presence changes with a unique channel name
-    const channelName = `presence_${currentProfile.id}_${Date.now()}`;
+    // Subscribe to presence changes
     presenceChannelRef.current = supabase
-      .channel(channelName)
+      .channel('user_presence_changes')
       .on(
         'postgres_changes',
         {
@@ -136,30 +122,23 @@ export function useOnlinePresence(currentProfile: Profile | null) {
           schema: 'public',
           table: 'user_presence',
         },
-        (payload) => {
-          console.log('👥 Presence change detected:', payload);
+        () => {
           // Refetch online users when presence changes
-          setTimeout(() => {
-            fetchOnlineUsers();
-          }, 500); // Small delay to ensure DB is updated
+          fetchOnlineUsers();
         }
       )
-      .subscribe((status) => {
-        console.log(`📡 Presence channel status for ${currentProfile.name}:`, status);
-      });
+      .subscribe();
 
-    // Set up heartbeat to keep presence alive - every 10 seconds
+    // Set up heartbeat to keep presence alive
     heartbeatIntervalRef.current = setInterval(() => {
       updatePresence(true);
-    }, 10000);
+    }, 30000); // Update every 30 seconds
 
     // Initial fetch
     fetchOnlineUsers();
 
     // Cleanup function
     return () => {
-      console.log(`🔄 Cleaning up presence tracking for ${currentProfile.name}`);
-      
       // Set user as offline
       updatePresence(false);
       
@@ -174,16 +153,14 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         heartbeatIntervalRef.current = null;
       }
     };
-  }, [currentProfile?.id, currentProfile?.name, updatePresence, fetchOnlineUsers]);
+  }, [currentProfile?.id, updatePresence, fetchOnlineUsers]);
 
   // Handle page visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.hidden) {
-        console.log('📱 Page hidden - keeping online (user might be switching tabs)');
-        // Don't set offline immediately - user might just be switching tabs
+        updatePresence(false);
       } else {
-        console.log('📱 Page visible - ensuring online status');
         updatePresence(true);
         fetchOnlineUsers();
       }
@@ -196,20 +173,6 @@ export function useOnlinePresence(currentProfile: Profile | null) {
     };
   }, [updatePresence, fetchOnlineUsers]);
 
-  // Handle beforeunload to set offline
-  useEffect(() => {
-    const handleBeforeUnload = () => {
-      console.log('🚪 Page unloading - setting offline');
-      updatePresence(false);
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    
-    return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-    };
-  }, [updatePresence]);
-
   const sendGameInvite = useCallback(async (targetProfileId: string) => {
     if (!currentProfile?.id) {
       toast.error('שגיאה: לא נמצא פרופיל פעיל');
@@ -217,8 +180,6 @@ export function useOnlinePresence(currentProfile: Profile | null) {
     }
 
     try {
-      console.log(`🎮 Sending game invite from ${currentProfile.name} to profile ${targetProfileId}`);
-
       // Create a new competition
       const { data: competition, error: competitionError } = await supabase
         .from('online_competitions')
@@ -234,8 +195,6 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         throw competitionError;
       }
 
-      console.log('🏆 Competition created:', competition.id);
-
       // Create invitation
       const { error: inviteError } = await supabase
         .from('competition_invitations')
@@ -250,33 +209,9 @@ export function useOnlinePresence(currentProfile: Profile | null) {
         throw inviteError;
       }
 
-      console.log('📨 Invitation created in database');
-
-      // Send real-time notification using a dedicated channel
-      const inviteChannelName = `invite_${targetProfileId}_${Date.now()}`;
-      console.log(`📡 Creating invite channel: ${inviteChannelName}`);
-      
-      const inviteChannel = supabase.channel(inviteChannelName);
-      
-      // Subscribe first, then send
-      await new Promise((resolve, reject) => {
-        const timeout = setTimeout(() => reject(new Error('Channel subscription timeout')), 5000);
-        
-        inviteChannel.subscribe((status) => {
-          console.log(`📡 Invite channel status: ${status}`);
-          if (status === 'SUBSCRIBED') {
-            clearTimeout(timeout);
-            resolve(status);
-          } else if (status === 'CHANNEL_ERROR') {
-            clearTimeout(timeout);
-            reject(new Error('Channel subscription failed'));
-          }
-        });
-      });
-
-      // Now send the broadcast
-      console.log('📤 Sending broadcast message...');
-      const broadcastResult = await inviteChannel.send({
+      // Send real-time notification
+      const channel = supabase.channel(`invite_${targetProfileId}`);
+      await channel.send({
         type: 'broadcast',
         event: 'game_invite',
         payload: {
@@ -284,21 +219,12 @@ export function useOnlinePresence(currentProfile: Profile | null) {
           from_name: currentProfile.name,
           competition_id: competition.id,
           invite_id: competition.id,
-          timestamp: Date.now(),
         }
       });
 
-      console.log('📡 Broadcast result:', broadcastResult);
-
-      // Clean up the channel after a delay
-      setTimeout(() => {
-        console.log('🧹 Cleaning up invite channel');
-        supabase.removeChannel(inviteChannel);
-      }, 2000);
-
       return true;
     } catch (error: any) {
-      console.error('❌ Error sending game invite:', error);
+      console.error('Error sending game invite:', error);
       toast.error('שגיאה בשליחת הזמנה: ' + error.message);
       return false;
     }
