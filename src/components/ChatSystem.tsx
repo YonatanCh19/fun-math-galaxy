@@ -22,7 +22,8 @@ import {
   Clock,
   AlertCircle,
   RefreshCw,
-  X
+  X,
+  Smile
 } from 'lucide-react';
 import { toast } from 'sonner';
 import LoadingSpinner from './LoadingSpinner';
@@ -53,11 +54,25 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
   const [sending, setSending] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   // Auto scroll to bottom when new messages arrive
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length > 0) {
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
   }, [messages]);
+
+  // Focus input when entering chat view
+  useEffect(() => {
+    if (view === 'chat' && inputRef.current) {
+      setTimeout(() => {
+        inputRef.current?.focus();
+      }, 300);
+    }
+  }, [view]);
 
   // Reset view when dialog opens and handle initial loading
   useEffect(() => {
@@ -163,7 +178,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                 variant="ghost"
                 size="icon"
                 onClick={onClose}
-                className="text-blue-600 hover:bg-blue-100"
+                className="text-blue-600 hover:bg-blue-100 min-h-[44px] min-w-[44px]"
               >
                 <X size={20} />
               </Button>
@@ -187,7 +202,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
         className="w-[95vw] max-w-md h-[80vh] bg-gradient-to-b from-blue-50 to-purple-50 border-4 border-blue-300 rounded-2xl p-0 overflow-hidden"
         dir="rtl"
       >
-        <DialogHeader className="p-4 pb-2 border-b border-blue-200">
+        <DialogHeader className="p-4 pb-2 border-b border-blue-200 flex-shrink-0">
           <DialogTitle className="text-xl text-blue-900 flex items-center justify-between">
             <div className="flex items-center gap-2">
               {view === 'conversations' && (
@@ -202,7 +217,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     variant="ghost"
                     size="icon"
                     onClick={() => setView('conversations')}
-                    className="mr-2 hover:bg-blue-100"
+                    className="mr-2 hover:bg-blue-100 min-h-[44px] min-w-[44px]"
                   >
                     <ArrowLeft size={20} />
                   </Button>
@@ -219,13 +234,13 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                       setView('conversations');
                       setActiveConversation(null);
                     }}
-                    className="mr-2 hover:bg-blue-100"
+                    className="mr-2 hover:bg-blue-100 min-h-[44px] min-w-[44px]"
                   >
                     <ArrowLeft size={20} />
                   </Button>
                   <div className="flex items-center gap-2">
                     {renderAvatarByType(currentConversation.other_profile?.avatar_character as AvatarCharacter, 'sm')}
-                    <span>{currentConversation.other_profile?.name}</span>
+                    <span className="font-bold">{currentConversation.other_profile?.name}</span>
                   </div>
                 </>
               )}
@@ -235,18 +250,18 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
               variant="ghost"
               size="icon"
               onClick={onClose}
-              className="text-blue-600 hover:bg-blue-100"
+              className="text-blue-600 hover:bg-blue-100 min-h-[44px] min-w-[44px]"
             >
               <X size={20} />
             </Button>
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex-1 overflow-hidden">
+        <div className="flex-1 overflow-hidden flex flex-col">
           {/* Conversations List View */}
           {view === 'conversations' && (
             <div className="h-full flex flex-col">
-              <div className="p-4 space-y-3">
+              <div className="p-4 space-y-3 flex-shrink-0">
                 <Button
                   onClick={() => setView('users')}
                   className="w-full bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold min-h-[44px]"
@@ -270,7 +285,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     <p className="text-sm mb-4">התחל צ'אט חדש עם חבר!</p>
                     <Button
                       onClick={() => setView('users')}
-                      className="bg-blue-500 hover:bg-blue-600 text-white"
+                      className="bg-blue-500 hover:bg-blue-600 text-white min-h-[44px]"
                     >
                       <Users size={16} className="ml-2" />
                       מצא חברים
@@ -325,7 +340,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
           {/* Users List View */}
           {view === 'users' && (
             <div className="h-full flex flex-col">
-              <div className="p-4">
+              <div className="p-4 flex-shrink-0">
                 <div className="relative">
                   <Search size={20} className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
                   <Input
@@ -354,7 +369,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     <p className="text-sm mb-4">
                       {search ? 'נסה לחפש שם אחר' : 'נסה לרענן או חכה שחברים יתחברו'}
                     </p>
-                    <Button onClick={refetch} variant="outline" className="flex items-center gap-2">
+                    <Button onClick={refetch} variant="outline" className="flex items-center gap-2 min-h-[44px]">
                       <RefreshCw size={16} />
                       רענן רשימה
                     </Button>
@@ -399,7 +414,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
           {/* Chat View */}
           {view === 'chat' && currentConversation && (
             <div className="h-full flex flex-col">
-              {/* Messages */}
+              {/* Messages Area */}
               <ScrollArea className="flex-1 px-4 py-2">
                 {chatError ? (
                   <ErrorDisplay message={chatError} />
@@ -426,7 +441,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                                   : 'bg-white border-2 border-gray-200 text-gray-800 rounded-bl-sm'
                               }`}
                             >
-                              <p className="text-sm leading-relaxed">{message.message}</p>
+                              <p className="text-sm leading-relaxed break-words">{message.message}</p>
                               <p className={`text-xs mt-1 ${isFromMe ? 'text-blue-100' : 'text-gray-500'}`}>
                                 {formatTime(message.created_at)}
                               </p>
@@ -440,14 +455,15 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                 )}
               </ScrollArea>
 
-              {/* Message Input */}
-              <div className="p-4 border-t border-blue-200 bg-white/50">
+              {/* Message Input Area */}
+              <div className="p-4 border-t border-blue-200 bg-white/50 flex-shrink-0">
                 <div className="flex gap-2">
                   <Input
+                    ref={inputRef}
                     value={messageInput}
                     onChange={(e) => setMessageInput(e.target.value)}
                     placeholder="כתוב הודעה..."
-                    className="flex-1 border-2 border-blue-200 focus:border-blue-400 bg-white"
+                    className="flex-1 border-2 border-blue-200 focus:border-blue-400 bg-white min-h-[44px]"
                     onKeyPress={(e) => {
                       if (e.key === 'Enter' && !e.shiftKey) {
                         e.preventDefault();
@@ -456,11 +472,15 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     }}
                     disabled={sending}
                     maxLength={500}
+                    autoComplete="off"
+                    autoCorrect="off"
+                    autoCapitalize="off"
+                    spellCheck="false"
                   />
                   <Button
                     onClick={handleSendMessage}
                     disabled={!messageInput.trim() || sending}
-                    className="bg-blue-500 hover:bg-blue-600 text-white min-h-[44px] min-w-[44px] disabled:opacity-50"
+                    className="bg-blue-500 hover:bg-blue-600 text-white min-h-[44px] min-w-[44px] disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {sending ? (
                       <LoadingSpinner size="sm" />
@@ -469,7 +489,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     )}
                   </Button>
                 </div>
-                <p className="text-xs text-gray-500 mt-1 text-center">
+                <p className="text-xs text-gray-500 mt-2 text-center">
                   ההודעות נשמרות ל-24 שעות ואז נמחקות אוטומטית
                 </p>
               </div>
