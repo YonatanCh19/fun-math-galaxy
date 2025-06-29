@@ -12,14 +12,12 @@ import TipsRepository from "@/components/TipsRepository";
 import ChampionsTable from "@/components/ChampionsTable";
 import MilestoneCongrats from "@/components/MilestoneCongrats";
 import DailyTip from "@/components/DailyTip";
-import ChatSystem from "@/components/ChatSystem";
 import { useProgressData } from "@/hooks/useProgressData";
 import { useActivityMonitor } from "@/hooks/useActivityMonitor";
 import { useMemoryMonitor } from "@/hooks/useMemoryMonitor";
-import { useChat } from "@/hooks/useChat";
 import RefreshPrompt from "@/components/RefreshPrompt";
 import { Button } from "@/components/ui/button";
-import { Gamepad2, Users, Target, Star, Trophy, MessageCircle } from "lucide-react";
+import { Gamepad2, Users, Target, Star, Trophy } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export default function Practice() {
@@ -36,7 +34,6 @@ export default function Practice() {
   const [showChampionsTable, setShowChampionsTable] = useState(false);
   const [showMilestoneCongrats, setShowMilestoneCongrats] = useState(false);
   const [showDailyTip, setShowDailyTip] = useState(false);
-  const [showChat, setShowChat] = useState(false);
   const [trophiesAwarded, setTrophiesAwarded] = useState(0);
 
   const { 
@@ -47,8 +44,6 @@ export default function Practice() {
     resetSessionCorrectAnswers 
   } = useProgressData(selectedProfile?.id || null);
 
-  // Only initialize chat if we have a selected profile
-  const { unreadCount } = useChat(selectedProfile || null);
   const { showRefreshPrompt, handleRefresh, dismissPrompt } = useActivityMonitor();
   useMemoryMonitor();
 
@@ -159,28 +154,11 @@ export default function Practice() {
             </Card>
           )}
 
-          {/* Chat Button and Online Competition Button */}
-          <div className="flex flex-col sm:flex-row justify-center gap-4 mb-6">
-            {/* Chat Button */}
-            <Button
-              onClick={() => setShowChat(true)}
-              className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center gap-3 relative min-h-[44px]"
-            >
-              <MessageCircle size={24} />
-              הצ'אט שלי
-              {unreadCount > 0 && (
-                <div className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
-                  <span className="text-xs text-white font-bold">
-                    {unreadCount > 9 ? '9+' : unreadCount}
-                  </span>
-                </div>
-              )}
-            </Button>
-
-            {/* Online Competition Button */}
+          {/* Online Competition Button */}
+          <div className="flex justify-center mb-6">
             <Button
               onClick={() => navigate('/online-competition')}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center gap-3 min-h-[44px]"
+              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center gap-3"
             >
               <Users size={24} />
               <Gamepad2 size={24} />
@@ -222,7 +200,7 @@ export default function Practice() {
                   </p>
                   <Button
                     onClick={() => navigate("/games")}
-                    className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white px-8 py-4 text-xl rounded-3xl drop-shadow font-bold animate-pulse shadow-xl min-h-[44px]"
+                    className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white px-8 py-4 text-xl rounded-3xl drop-shadow font-bold animate-pulse shadow-xl"
                   >
                     🎮 בואו נשחק! 🎮
                   </Button>
@@ -239,9 +217,6 @@ export default function Practice() {
       <MyCoins isOpen={showMyCoins} onClose={() => setShowMyCoins(false)} />
       <TipsRepository isOpen={showTipsRepository} onClose={() => setShowTipsRepository(false)} />
       <ChampionsTable isOpen={showChampionsTable} onClose={() => setShowChampionsTable(false)} />
-      {selectedProfile && (
-        <ChatSystem isOpen={showChat} onClose={() => setShowChat(false)} />
-      )}
     </>
   );
 }
