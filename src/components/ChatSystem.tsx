@@ -22,8 +22,7 @@ import {
   Clock,
   AlertCircle,
   RefreshCw,
-  X,
-  Smile
+  X
 } from 'lucide-react';
 import { toast } from 'sonner';
 import LoadingSpinner from './LoadingSpinner';

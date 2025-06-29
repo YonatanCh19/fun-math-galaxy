@@ -35,6 +35,7 @@ const OnlineCompetition = () => {
   
   const inviteChannelRef = useRef<any>(null);
   const competitionChannelRef = useRef<any>(null);
+  const invitationChannelRef = useRef<any>(null);
 
   // Redirect if no profile selected
   useEffect(() => {
@@ -43,34 +44,106 @@ const OnlineCompetition = () => {
     }
   }, [authLoading, user, selectedProfile, navigate]);
 
-  // Listen for incoming invites
+  // Listen for incoming invites via broadcast (real-time)
   useEffect(() => {
     if (!selectedProfile?.id) return;
 
+    console.log('🔔 Setting up invite listener for profile:', selectedProfile.id);
+
+    const channelName = `invite_${selectedProfile.id}`;
     inviteChannelRef.current = supabase
-      .channel(`invite_${selectedProfile.id}`)
+      .channel(channelName)
       .on('broadcast', { event: 'game_invite' }, (payload) => {
-        console.log('Received game invite:', payload);
+        console.log('🎮 Received game invite via broadcast:', payload);
+        
+        // Show invite immediately
         setIncomingInvite({
           id: payload.payload.invite_id,
           from_profile_id: payload.payload.from_profile_id,
           from_name: payload.payload.from_name,
           competition_id: payload.payload.competition_id,
         });
+
+        // Also show a toast notification
+        toast.info(`🎮 הזמנה למשחק מ${payload.payload.from_name}!`, {
+          description: 'לחץ כדי לראות את ההזמנה',
+          duration: 5000,
+        });
       })
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Invite channel status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Successfully subscribed to invite channel');
+        }
+      });
 
     return () => {
       if (inviteChannelRef.current) {
+        console.log('🧹 Cleaning up invite channel');
         supabase.removeChannel(inviteChannelRef.current);
         inviteChannelRef.current = null;
       }
     };
   }, [selectedProfile?.id]);
 
-  // Listen for competition status changes (for the sender)
+  // Listen for competition invitations via database changes (backup method)
   useEffect(() => {
     if (!selectedProfile?.id) return;
+
+    console.log('📊 Setting up invitation database listener for profile:', selectedProfile.id);
+
+    invitationChannelRef.current = supabase
+      .channel('invitation_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'competition_invitations',
+          filter: `to_profile_id=eq.${selectedProfile.id}`,
+        },
+        async (payload) => {
+          console.log('📨 New invitation detected in database:', payload);
+          
+          // Get the sender's profile info
+          const { data: fromProfile } = await supabase
+            .from('profiles')
+            .select('name')
+            .eq('id', payload.new.from_profile_id)
+            .single();
+
+          if (fromProfile) {
+            setIncomingInvite({
+              id: payload.new.id,
+              from_profile_id: payload.new.from_profile_id,
+              from_name: fromProfile.name,
+              competition_id: payload.new.competition_id,
+            });
+
+            toast.info(`🎮 הזמנה למשחק מ${fromProfile.name}!`, {
+              description: 'לחץ כדי לראות את ההזמנה',
+              duration: 5000,
+            });
+          }
+        }
+      )
+      .subscribe((status) => {
+        console.log('📡 Invitation database channel status:', status);
+      });
+
+    return () => {
+      if (invitationChannelRef.current) {
+        supabase.removeChannel(invitationChannelRef.current);
+        invitationChannelRef.current = null;
+      }
+    };
+  }, [selectedProfile?.id]);
+
+  // Listen for competition status changes (for both sender and receiver)
+  useEffect(() => {
+    if (!selectedProfile?.id) return;
+
+    console.log('🏆 Setting up competition status listener for profile:', selectedProfile.id);
 
     competitionChannelRef.current = supabase
       .channel('competition_status_changes')
@@ -80,15 +153,20 @@ const OnlineCompetition = () => {
           event: 'UPDATE',
           schema: 'public',
           table: 'online_competitions',
-          filter: `player1_id=eq.${selectedProfile.id}`,
+          filter: `or(player1_id.eq.${selectedProfile.id},player2_id.eq.${selectedProfile.id})`,
         },
         (payload) => {
-          console.log('Competition status changed:', payload);
+          console.log('🎯 Competition status changed:', payload);
           const newData = payload.new;
           
           // If competition became active, navigate to game
           if (newData.status === 'active' && newData.started_at) {
-            toast.success('ההזמנה התקבלה! מתחיל משחק...');
+            console.log('🚀 Competition is now active, navigating to game...');
+            toast.success('המשחק מתחיל! בהצלחה!', {
+              description: 'מעביר אותך למשחק...',
+              duration: 3000,
+            });
+            
             setTimeout(() => {
               navigate(`/online-game/${newData.id}`);
             }, 1000);
@@ -97,10 +175,13 @@ const OnlineCompetition = () => {
           // If competition was cancelled, show notification
           if (newData.status === 'cancelled') {
             toast.info('ההזמנה נדחתה על ידי השחקן השני');
+            setIncomingInvite(null);
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Competition status channel status:', status);
+      });
 
     return () => {
       if (competitionChannelRef.current) {
@@ -114,16 +195,18 @@ const OnlineCompetition = () => {
     setSendingInvite(targetProfileId);
     
     try {
+      console.log('📤 Sending game invite to profile:', targetProfileId);
       const success = await sendGameInvite(targetProfileId);
       if (success) {
         const targetUser = onlineUsers.find(u => u.profile_id === targetProfileId);
         toast.success(`הזמנה נשלחה ל${targetUser?.profile.name || 'שחקן'}!`, {
-          description: 'ממתין לתגובה...',
+          description: 'ההזמנה נשלחה בזמן אמת - ממתין לתגובה...',
           duration: 5000,
         });
       }
     } catch (error) {
       console.error('Error sending invite:', error);
+      toast.error('שגיאה בשליחת הזמנה');
     } finally {
       setSendingInvite(null);
     }
@@ -132,11 +215,16 @@ const OnlineCompetition = () => {
   const handleInviteResponse = async (accepted: boolean) => {
     if (!incomingInvite || !selectedProfile) return;
 
+    console.log(`🎯 Responding to invite: ${accepted ? 'ACCEPTED' : 'DECLINED'}`);
+
     try {
       // Update invitation status
       const { error: updateError } = await supabase
         .from('competition_invitations')
-        .update({ status: accepted ? 'accepted' : 'declined' })
+        .update({ 
+          status: accepted ? 'accepted' : 'declined',
+          updated_at: new Date().toISOString()
+        })
         .eq('competition_id', incomingInvite.competition_id);
 
       if (updateError) {
@@ -150,6 +238,7 @@ const OnlineCompetition = () => {
           .update({ 
             status: 'active',
             started_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
           })
           .eq('id', incomingInvite.competition_id);
 
@@ -157,9 +246,10 @@ const OnlineCompetition = () => {
           throw competitionError;
         }
 
-        toast.success('הזמנה התקבלה! מתחיל משחק...');
+        console.log('✅ Competition activated, both players should navigate to game');
+        toast.success('הזמנה התקבלה! המשחק מתחיל!');
         
-        // Navigate to game
+        // Navigate to game immediately
         setTimeout(() => {
           navigate(`/online-game/${incomingInvite.competition_id}`);
         }, 1000);
@@ -167,7 +257,10 @@ const OnlineCompetition = () => {
         // Update competition status to cancelled
         await supabase
           .from('online_competitions')
-          .update({ status: 'cancelled' })
+          .update({ 
+            status: 'cancelled',
+            updated_at: new Date().toISOString()
+          })
           .eq('id', incomingInvite.competition_id);
 
         toast.info('הזמנה נדחתה');
