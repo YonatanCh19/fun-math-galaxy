@@ -5,7 +5,7 @@ import { useOnlinePresence } from '@/hooks/useOnlinePresence';
 import { renderAvatarByType, AvatarCharacter } from '@/components/AvatarSelector';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
   Dialog,
@@ -19,8 +19,9 @@ import {
   ArrowLeft, 
   Users, 
   Search,
-  X,
-  Clock
+  Clock,
+  AlertCircle,
+  RefreshCw
 } from 'lucide-react';
 import { toast } from 'sonner';
 import LoadingSpinner from './LoadingSpinner';
@@ -37,12 +38,13 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
     messages, 
     activeConversation, 
     loading, 
+    error,
     fetchMessages, 
     sendMessage, 
     startConversation,
     setActiveConversation 
   } = useChat(selectedProfile);
-  const { onlineUsers } = useOnlinePresence(selectedProfile);
+  const { onlineUsers, loading: onlineLoading, error: onlineError, refetch } = useOnlinePresence(selectedProfile);
   
   const [view, setView] = useState<'conversations' | 'chat' | 'users'>('conversations');
   const [messageInput, setMessageInput] = useState('');
@@ -55,6 +57,16 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Reset view when dialog opens
+  useEffect(() => {
+    if (isOpen) {
+      setView('conversations');
+      setActiveConversation(null);
+      setSearch('');
+      setMessageInput('');
+    }
+  }, [isOpen, setActiveConversation]);
+
   const handleSendMessage = async () => {
     if (!messageInput.trim() || !activeConversation || sending) return;
 
@@ -66,6 +78,9 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
     
     if (success) {
       setMessageInput('');
+      toast.success('הודעה נשלחה!');
+    } else {
+      toast.error('שגיאה בשליחת ההודעה');
     }
     setSending(false);
   };
@@ -75,6 +90,9 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
     if (conversationId) {
       await fetchMessages(conversationId);
       setView('chat');
+      toast.success('שיחה חדשה נוצרה!');
+    } else {
+      toast.error('שגיאה ביצירת שיחה');
     }
   };
 
@@ -102,6 +120,20 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
   );
 
   const currentConversation = conversations.find(c => c.id === activeConversation);
+
+  // Error display component
+  const ErrorDisplay = ({ message, onRetry }: { message: string; onRetry?: () => void }) => (
+    <div className="flex flex-col items-center justify-center py-8 px-4">
+      <AlertCircle size={48} className="text-red-500 mb-4" />
+      <p className="text-red-600 text-center mb-4">{message}</p>
+      {onRetry && (
+        <Button onClick={onRetry} variant="outline" className="flex items-center gap-2">
+          <RefreshCw size={16} />
+          נסה שוב
+        </Button>
+      )}
+    </div>
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -170,10 +202,12 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                   <div className="flex justify-center py-8">
                     <LoadingSpinner message="טוען שיחות..." />
                   </div>
+                ) : error ? (
+                  <ErrorDisplay message={error} onRetry={() => window.location.reload()} />
                 ) : conversations.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <MessageCircle size={48} className="mx-auto mb-4 opacity-50" />
-                    <p>אין שיחות עדיין</p>
+                    <p className="font-bold mb-2">אין שיחות עדיין</p>
                     <p className="text-sm">התחל צ'אט חדש עם חבר!</p>
                   </div>
                 ) : (
@@ -181,7 +215,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                     {conversations.map((conversation) => (
                       <Card
                         key={conversation.id}
-                        className="cursor-pointer hover:bg-blue-50 transition-colors border-2 border-blue-200"
+                        className="cursor-pointer hover:bg-blue-50 transition-colors border-2 border-blue-200 hover:border-blue-400"
                         onClick={() => handleOpenConversation(conversation.id)}
                       >
                         <CardContent className="p-3">
@@ -189,7 +223,7 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
                             <div className="relative">
                               {renderAvatarByType(conversation.other_profile?.avatar_character as AvatarCharacter, 'sm')}
                               {conversation.unread_count && conversation.unread_count > 0 && (
-                                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                                <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center animate-pulse">
                                   <span className="text-xs text-white font-bold">
                                     {conversation.unread_count > 9 ? '9+' : conversation.unread_count}
                                   </span>
@@ -239,24 +273,35 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
               </div>
 
               <ScrollArea className="flex-1 px-4">
-                {filteredUsers.length === 0 ? (
+                {onlineLoading ? (
+                  <div className="flex justify-center py-8">
+                    <LoadingSpinner message="טוען משתמשים..." />
+                  </div>
+                ) : onlineError ? (
+                  <ErrorDisplay message={onlineError} onRetry={refetch} />
+                ) : filteredUsers.length === 0 ? (
                   <div className="text-center py-8 text-gray-500">
                     <Users size={48} className="mx-auto mb-4 opacity-50" />
-                    <p>אין משתמשים מחוברים</p>
+                    <p className="font-bold mb-2">אין משתמשים מחוברים</p>
+                    <p className="text-sm">נסה לרענן או חכה שחברים יתחברו</p>
+                    <Button onClick={refetch} className="mt-4" variant="outline">
+                      <RefreshCw size={16} className="ml-2" />
+                      רענן
+                    </Button>
                   </div>
                 ) : (
                   <div className="space-y-2 pb-4">
                     {filteredUsers.map((user) => (
                       <Card
                         key={user.profile_id}
-                        className="cursor-pointer hover:bg-green-50 transition-colors border-2 border-green-200"
+                        className="cursor-pointer hover:bg-green-50 transition-colors border-2 border-green-200 hover:border-green-400"
                         onClick={() => handleStartChat(user.profile_id)}
                       >
                         <CardContent className="p-3">
                           <div className="flex items-center gap-3">
                             <div className="relative">
                               {renderAvatarByType(user.profile.avatar_character as AvatarCharacter, 'sm')}
-                              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white"></div>
+                              <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white animate-pulse"></div>
                             </div>
                             <div className="flex-1">
                               <p className="font-bold text-blue-900">{user.profile.name}</p>
@@ -283,31 +328,42 @@ export default function ChatSystem({ isOpen, onClose }: ChatSystemProps) {
             <div className="h-full flex flex-col">
               {/* Messages */}
               <ScrollArea className="flex-1 px-4 py-2">
-                <div className="space-y-3">
-                  {messages.map((message) => {
-                    const isFromMe = message.from_profile_id === selectedProfile?.id;
-                    return (
-                      <div
-                        key={message.id}
-                        className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}
-                      >
-                        <div
-                          className={`max-w-[80%] p-3 rounded-2xl ${
-                            isFromMe
-                              ? 'bg-blue-500 text-white rounded-br-sm'
-                              : 'bg-white border-2 border-gray-200 text-gray-800 rounded-bl-sm'
-                          }`}
-                        >
-                          <p className="text-sm">{message.message}</p>
-                          <p className={`text-xs mt-1 ${isFromMe ? 'text-blue-100' : 'text-gray-500'}`}>
-                            {formatTime(message.created_at)}
-                          </p>
-                        </div>
+                {error ? (
+                  <ErrorDisplay message={error} />
+                ) : (
+                  <div className="space-y-3">
+                    {messages.length === 0 ? (
+                      <div className="text-center py-8 text-gray-500">
+                        <MessageCircle size={48} className="mx-auto mb-4 opacity-50" />
+                        <p>התחילו לכתוב הודעות!</p>
                       </div>
-                    );
-                  })}
-                  <div ref={messagesEndRef} />
-                </div>
+                    ) : (
+                      messages.map((message) => {
+                        const isFromMe = message.from_profile_id === selectedProfile?.id;
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex ${isFromMe ? 'justify-end' : 'justify-start'}`}
+                          >
+                            <div
+                              className={`max-w-[80%] p-3 rounded-2xl ${
+                                isFromMe
+                                  ? 'bg-blue-500 text-white rounded-br-sm'
+                                  : 'bg-white border-2 border-gray-200 text-gray-800 rounded-bl-sm'
+                              }`}
+                            >
+                              <p className="text-sm">{message.message}</p>
+                              <p className={`text-xs mt-1 ${isFromMe ? 'text-blue-100' : 'text-gray-500'}`}>
+                                {formatTime(message.created_at)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                    <div ref={messagesEndRef} />
+                  </div>
+                )}
               </ScrollArea>
 
               {/* Message Input */}

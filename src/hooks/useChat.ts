@@ -34,6 +34,7 @@ export function useChat(currentProfile: Profile | null) {
   const [activeConversation, setActiveConversation] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [error, setError] = useState<string | null>(null);
   
   const conversationsChannelRef = useRef<any>(null);
   const messagesChannelRef = useRef<any>(null);
@@ -67,11 +68,13 @@ export function useChat(currentProfile: Profile | null) {
     if (!currentProfile?.id) {
       setConversations([]);
       setUnreadCount(0);
+      setError(null);
       return;
     }
 
     try {
       setLoading(true);
+      setError(null);
       
       // Get conversations where current profile participates
       const { data: conversationsData, error: conversationsError } = await supabase
@@ -81,7 +84,9 @@ export function useChat(currentProfile: Profile | null) {
         .order('last_message_at', { ascending: false });
 
       if (conversationsError) {
-        throw conversationsError;
+        console.error('Error fetching conversations:', conversationsError);
+        setError('שגיאה בטעינת השיחות');
+        return;
       }
 
       if (!conversationsData || conversationsData.length === 0) {
@@ -101,7 +106,9 @@ export function useChat(currentProfile: Profile | null) {
         .in('id', otherProfileIds);
 
       if (profilesError) {
-        throw profilesError;
+        console.error('Error fetching profiles:', profilesError);
+        setError('שגיאה בטעינת פרטי המשתמשים');
+        return;
       }
 
       // Get unread message counts and last messages for each conversation
@@ -144,7 +151,7 @@ export function useChat(currentProfile: Profile | null) {
 
     } catch (error: any) {
       console.error('Error fetching conversations:', error);
-      // Don't show toast error for every fetch
+      setError('שגיאה בטעינת השיחות');
     } finally {
       setLoading(false);
     }
@@ -155,6 +162,8 @@ export function useChat(currentProfile: Profile | null) {
     if (!currentProfile?.id) return;
 
     try {
+      setError(null);
+      
       const { data: messagesData, error } = await supabase
         .from('chat_messages')
         .select(`
@@ -165,7 +174,9 @@ export function useChat(currentProfile: Profile | null) {
         .order('created_at', { ascending: true });
 
       if (error) {
-        throw error;
+        console.error('Error fetching messages:', error);
+        setError('שגיאה בטעינת ההודעות');
+        return;
       }
 
       setMessages(messagesData || []);
@@ -184,7 +195,7 @@ export function useChat(currentProfile: Profile | null) {
 
     } catch (error: any) {
       console.error('Error fetching messages:', error);
-      toast.error('שגיאה בטעינת ההודעות');
+      setError('שגיאה בטעינת ההודעות');
     }
   }, [currentProfile?.id, fetchConversations]);
 
@@ -193,6 +204,8 @@ export function useChat(currentProfile: Profile | null) {
     if (!currentProfile?.id || !message.trim()) return false;
 
     try {
+      setError(null);
+      
       // Find or create conversation
       let conversationId: string;
       
@@ -215,7 +228,11 @@ export function useChat(currentProfile: Profile | null) {
           .select('id')
           .single();
 
-        if (convError) throw convError;
+        if (convError) {
+          console.error('Error creating conversation:', convError);
+          setError('שגיאה ביצירת שיחה');
+          return false;
+        }
         conversationId = newConv.id;
       }
 
@@ -229,7 +246,11 @@ export function useChat(currentProfile: Profile | null) {
           message: message.trim(),
         });
 
-      if (messageError) throw messageError;
+      if (messageError) {
+        console.error('Error sending message:', messageError);
+        setError('שגיאה בשליחת ההודעה');
+        return false;
+      }
 
       // Update conversation last_message_at
       await supabase
@@ -241,7 +262,7 @@ export function useChat(currentProfile: Profile | null) {
 
     } catch (error: any) {
       console.error('Error sending message:', error);
-      toast.error('שגיאה בשליחת ההודעה');
+      setError('שגיאה בשליחת ההודעה');
       return false;
     }
   }, [currentProfile?.id]);
@@ -251,6 +272,8 @@ export function useChat(currentProfile: Profile | null) {
     if (!currentProfile?.id) return null;
 
     try {
+      setError(null);
+      
       // Check if conversation already exists
       const { data: existingConv } = await supabase
         .from('chat_conversations')
@@ -272,7 +295,11 @@ export function useChat(currentProfile: Profile | null) {
         .select('id')
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error creating conversation:', error);
+        setError('שגיאה ביצירת שיחה');
+        return null;
+      }
 
       // Refresh conversations
       fetchConversations();
@@ -281,7 +308,7 @@ export function useChat(currentProfile: Profile | null) {
 
     } catch (error: any) {
       console.error('Error starting conversation:', error);
-      toast.error('שגיאה ביצירת שיחה');
+      setError('שגיאה ביצירת שיחה');
       return null;
     }
   }, [currentProfile?.id, fetchConversations]);
@@ -295,8 +322,9 @@ export function useChat(currentProfile: Profile | null) {
 
     try {
       // Subscribe to conversations changes
+      const conversationsChannelName = `chat_conversations_${currentProfile.id}_${Date.now()}`;
       conversationsChannelRef.current = supabase
-        .channel(`chat_conversations_${currentProfile.id}_${Date.now()}`)
+        .channel(conversationsChannelName)
         .on(
           'postgres_changes',
           {
@@ -305,18 +333,22 @@ export function useChat(currentProfile: Profile | null) {
             table: 'chat_conversations',
           },
           () => {
+            console.log('Conversations changed, refetching...');
             fetchConversations();
           }
         )
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            console.log('Conversations channel subscribed successfully');
+            console.log('✅ Conversations channel subscribed successfully');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('❌ Conversations channel subscription failed');
           }
         });
 
       // Subscribe to messages changes
+      const messagesChannelName = `chat_messages_${currentProfile.id}_${Date.now()}`;
       messagesChannelRef.current = supabase
-        .channel(`chat_messages_${currentProfile.id}_${Date.now()}`)
+        .channel(messagesChannelName)
         .on(
           'postgres_changes',
           {
@@ -325,6 +357,7 @@ export function useChat(currentProfile: Profile | null) {
             table: 'chat_messages',
           },
           (payload) => {
+            console.log('💬 New message received:', payload);
             const newMessage = payload.new as ChatMessage;
             
             // If message is for current conversation, add it to messages
@@ -338,7 +371,7 @@ export function useChat(currentProfile: Profile | null) {
               
               // Show toast notification if not in active conversation
               if (newMessage.conversation_id !== activeConversation) {
-                toast.info('הודעה חדשה התקבלה!', {
+                toast.info('💬 הודעה חדשה!', {
                   description: 'יש לך הודעה חדשה בצ\'אט',
                   duration: 3000,
                 });
@@ -351,7 +384,9 @@ export function useChat(currentProfile: Profile | null) {
         )
         .subscribe((status) => {
           if (status === 'SUBSCRIBED') {
-            console.log('Messages channel subscribed successfully');
+            console.log('✅ Messages channel subscribed successfully');
+          } else if (status === 'CHANNEL_ERROR') {
+            console.error('❌ Messages channel subscription failed');
           }
         });
 
@@ -362,6 +397,7 @@ export function useChat(currentProfile: Profile | null) {
 
     } catch (error) {
       console.error('Error setting up chat subscriptions:', error);
+      setError('שגיאה בהגדרת הצ\'אט');
     }
 
     return cleanup;
@@ -378,6 +414,7 @@ export function useChat(currentProfile: Profile | null) {
     activeConversation,
     loading,
     unreadCount,
+    error,
     fetchMessages,
     sendMessage,
     startConversation,
