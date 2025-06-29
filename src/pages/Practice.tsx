@@ -47,7 +47,8 @@ export default function Practice() {
     resetSessionCorrectAnswers 
   } = useProgressData(selectedProfile?.id || null);
 
-  const { unreadCount } = useChat(selectedProfile);
+  // Only initialize chat if we have a selected profile
+  const { unreadCount } = useChat(selectedProfile || null);
   const { showRefreshPrompt, handleRefresh, dismissPrompt } = useActivityMonitor();
   useMemoryMonitor();
 
@@ -163,7 +164,7 @@ export default function Practice() {
             {/* Chat Button */}
             <Button
               onClick={() => setShowChat(true)}
-              className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center gap-3 relative"
+              className="bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center gap-3 relative min-h-[44px]"
             >
               <MessageCircle size={24} />
               הצ'אט שלי
@@ -179,7 +180,7 @@ export default function Practice() {
             {/* Online Competition Button */}
             <Button
               onClick={() => navigate('/online-competition')}
-              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center gap-3"
+              className="bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold px-6 py-3 rounded-xl shadow-lg transform hover:scale-105 transition-all duration-200 flex items-center gap-3 min-h-[44px]"
             >
               <Users size={24} />
               <Gamepad2 size={24} />
@@ -221,7 +222,7 @@ export default function Practice() {
                   </p>
                   <Button
                     onClick={() => navigate("/games")}
-                    className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white px-8 py-4 text-xl rounded-3xl drop-shadow font-bold animate-pulse shadow-xl"
+                    className="bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white px-8 py-4 text-xl rounded-3xl drop-shadow font-bold animate-pulse shadow-xl min-h-[44px]"
                   >
                     🎮 בואו נשחק! 🎮
                   </Button>
@@ -238,7 +239,9 @@ export default function Practice() {
       <MyCoins isOpen={showMyCoins} onClose={() => setShowMyCoins(false)} />
       <TipsRepository isOpen={showTipsRepository} onClose={() => setShowTipsRepository(false)} />
       <ChampionsTable isOpen={showChampionsTable} onClose={() => setShowChampionsTable(false)} />
-      <ChatSystem isOpen={showChat} onClose={() => setShowChat(false)} />
+      {selectedProfile && (
+        <ChatSystem isOpen={showChat} onClose={() => setShowChat(false)} />
+      )}
     </>
   );
 }

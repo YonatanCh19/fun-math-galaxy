@@ -37,10 +37,38 @@ export function useChat(currentProfile: Profile | null) {
   
   const conversationsChannelRef = useRef<any>(null);
   const messagesChannelRef = useRef<any>(null);
+  const isSubscribedRef = useRef(false);
+
+  // Cleanup function
+  const cleanup = useCallback(() => {
+    if (conversationsChannelRef.current) {
+      try {
+        supabase.removeChannel(conversationsChannelRef.current);
+      } catch (error) {
+        console.error('Error removing conversations channel:', error);
+      }
+      conversationsChannelRef.current = null;
+    }
+    
+    if (messagesChannelRef.current) {
+      try {
+        supabase.removeChannel(messagesChannelRef.current);
+      } catch (error) {
+        console.error('Error removing messages channel:', error);
+      }
+      messagesChannelRef.current = null;
+    }
+    
+    isSubscribedRef.current = false;
+  }, []);
 
   // Fetch conversations for current profile
   const fetchConversations = useCallback(async () => {
-    if (!currentProfile?.id) return;
+    if (!currentProfile?.id) {
+      setConversations([]);
+      setUnreadCount(0);
+      return;
+    }
 
     try {
       setLoading(true);
@@ -116,7 +144,7 @@ export function useChat(currentProfile: Profile | null) {
 
     } catch (error: any) {
       console.error('Error fetching conversations:', error);
-      toast.error('שגיאה בטעינת השיחות');
+      // Don't show toast error for every fetch
     } finally {
       setLoading(false);
     }
@@ -260,75 +288,89 @@ export function useChat(currentProfile: Profile | null) {
 
   // Subscribe to real-time updates
   useEffect(() => {
-    if (!currentProfile?.id) return;
+    if (!currentProfile?.id || isSubscribedRef.current) return;
 
-    // Subscribe to conversations changes
-    conversationsChannelRef.current = supabase
-      .channel('chat_conversations_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'chat_conversations',
-        },
-        () => {
-          fetchConversations();
-        }
-      )
-      .subscribe();
+    // Cleanup any existing subscriptions first
+    cleanup();
 
-    // Subscribe to messages changes
-    messagesChannelRef.current = supabase
-      .channel('chat_messages_changes')
-      .on(
-        'postgres_changes',
-        {
-          event: 'INSERT',
-          schema: 'public',
-          table: 'chat_messages',
-        },
-        (payload) => {
-          const newMessage = payload.new as ChatMessage;
-          
-          // If message is for current conversation, add it to messages
-          if (newMessage.conversation_id === activeConversation) {
-            setMessages(prev => [...prev, newMessage]);
+    try {
+      // Subscribe to conversations changes
+      conversationsChannelRef.current = supabase
+        .channel(`chat_conversations_${currentProfile.id}_${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: '*',
+            schema: 'public',
+            table: 'chat_conversations',
+          },
+          () => {
+            fetchConversations();
           }
-          
-          // If message is to current profile, show notification and update unread count
-          if (newMessage.to_profile_id === currentProfile.id) {
-            setUnreadCount(prev => prev + 1);
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Conversations channel subscribed successfully');
+          }
+        });
+
+      // Subscribe to messages changes
+      messagesChannelRef.current = supabase
+        .channel(`chat_messages_${currentProfile.id}_${Date.now()}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'chat_messages',
+          },
+          (payload) => {
+            const newMessage = payload.new as ChatMessage;
             
-            // Show toast notification if not in active conversation
-            if (newMessage.conversation_id !== activeConversation) {
-              toast.info('הודעה חדשה התקבלה!', {
-                description: 'יש לך הודעה חדשה בצ\'אט',
-                duration: 3000,
-              });
+            // If message is for current conversation, add it to messages
+            if (newMessage.conversation_id === activeConversation) {
+              setMessages(prev => [...prev, newMessage]);
             }
+            
+            // If message is to current profile, show notification and update unread count
+            if (newMessage.to_profile_id === currentProfile.id) {
+              setUnreadCount(prev => prev + 1);
+              
+              // Show toast notification if not in active conversation
+              if (newMessage.conversation_id !== activeConversation) {
+                toast.info('הודעה חדשה התקבלה!', {
+                  description: 'יש לך הודעה חדשה בצ\'אט',
+                  duration: 3000,
+                });
+              }
+            }
+            
+            // Refresh conversations to update last message and unread counts
+            fetchConversations();
           }
-          
-          // Refresh conversations to update last message and unread counts
-          fetchConversations();
-        }
-      )
-      .subscribe();
+        )
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('Messages channel subscribed successfully');
+          }
+        });
 
-    // Initial fetch
-    fetchConversations();
+      isSubscribedRef.current = true;
 
-    return () => {
-      if (conversationsChannelRef.current) {
-        supabase.removeChannel(conversationsChannelRef.current);
-        conversationsChannelRef.current = null;
-      }
-      if (messagesChannelRef.current) {
-        supabase.removeChannel(messagesChannelRef.current);
-        messagesChannelRef.current = null;
-      }
-    };
-  }, [currentProfile?.id, activeConversation, fetchConversations]);
+      // Initial fetch
+      fetchConversations();
+
+    } catch (error) {
+      console.error('Error setting up chat subscriptions:', error);
+    }
+
+    return cleanup;
+  }, [currentProfile?.id, activeConversation, fetchConversations, cleanup]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return cleanup;
+  }, [cleanup]);
 
   return {
     conversations,
